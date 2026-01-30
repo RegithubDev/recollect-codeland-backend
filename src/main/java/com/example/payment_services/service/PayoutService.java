@@ -15,9 +15,8 @@ public class PayoutService {
 
     public CashfreeTransferResponse processPayout(CashfreeTransferRequest request) {
         try {
-            CashfreeTransferResponse transferResponse = cashfreeHttpService.initiateTransfer(request);
 
-            return transferResponse;
+            return cashfreeHttpService.initiateTransfer(request);
 
         } catch (Exception e) {
             log.error("Payout failed", e);
@@ -27,24 +26,13 @@ public class PayoutService {
 
     public TransferStatusResponseDTO checkPayoutStatus(String cfTransferId) {
         try {
-            // For referenceId, you might need a different method
-            // Currently we only have getTransferStatusByTransferId
-            // You'll need to implement getTransferStatusByReferenceId
 
-            // Temporary: Use transferId as referenceId for testing
-            TransferStatusResponseDTO statusResponse = cashfreeHttpService
+            return cashfreeHttpService
                     .getTransferStatusByTransferId(cfTransferId);
-
-            return statusResponse;
 
         } catch (Exception e) {
             log.error("Status check failed", e);
             throw new RuntimeException("Status check failed: " + e.getMessage());
         }
-    }
-
-    private boolean isSuccessStatus(String status) {
-        return "SUCCESS".equalsIgnoreCase(status) ||
-                "SUCCESSFUL".equalsIgnoreCase(status);
     }
 }

@@ -9,9 +9,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
-import java.util.HashMap;
-import java.util.Map;
 import java.util.UUID;
+import static org.springframework.web.util.UriComponentsBuilder.fromHttpUrl;
 
 @Service
 @RequiredArgsConstructor
@@ -79,37 +78,11 @@ public class CashfreeHttpService {
         }
     }
 
-    // ========== GET TRANSFER STATUS V2 ==========
-    public CashfreeTransferResponse getTransferStatus(String referenceId) {
-        try {
-            String url = cashfreeConfig.getBaseUrl() + "/transfers";
-
-            UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(url)
-                    .queryParam("reference_id", referenceId);
-
-            HttpHeaders headers = createHeaders();
-            HttpEntity<String> entity = new HttpEntity<>(headers);
-
-            log.info("Getting transfer status for reference: {}", referenceId);
-
-            ResponseEntity<CashfreeTransferResponse> response = restTemplate.exchange(
-                    builder.toUriString(), HttpMethod.GET, entity, CashfreeTransferResponse.class);
-
-            log.info("Get transfer status response status: {}", response.getStatusCode());
-
-            return response.getBody();
-
-        } catch (Exception e) {
-            log.error("Get transfer status error", e);
-            throw new RuntimeException("Status check failed: " + e.getMessage());
-        }
-    }
-
     public TransferStatusResponseDTO getTransferStatusByTransferId(String cfTransfer_id) {
         try {
             String url = cashfreeConfig.getBaseUrl() + "/transfers";
 
-            UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(url)
+            UriComponentsBuilder builder = fromHttpUrl(url)
                     .queryParam("cf_transfer_id", cfTransfer_id);
 
             HttpHeaders headers = createHeaders();
