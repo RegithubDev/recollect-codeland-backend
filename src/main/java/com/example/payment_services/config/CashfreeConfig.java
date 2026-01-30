@@ -10,5 +10,9 @@ import org.springframework.stereotype.Component;
 public class CashfreeConfig {
     private String clientId;
     private String clientSecret;
-    private String baseUrl;
+    private String payoutBaseUrl;
+
+    public String getPgBaseUrl() {
+        return "https://sandbox.cashfree.com/pg";
+    }
 }

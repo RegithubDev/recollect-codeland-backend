@@ -23,7 +23,7 @@ public class CashfreePayoutHttpService {
     // ========== CREATE BENEFICIARY V2 ==========
     public CashfreeBeneficiaryResponse createBeneficiary(CashfreeBeneficiaryRequest request) {
         try {
-            String url = cashfreeConfig.getBaseUrl() + "/beneficiary";
+            String url = cashfreeConfig.getPayoutBaseUrl() + "/beneficiary";
             log.info("Creating beneficiary request: {}", request);
 
             HttpHeaders headers = createHeaders();
@@ -51,7 +51,7 @@ public class CashfreePayoutHttpService {
     // ========== STANDARD TRANSFER V2 ========== (CORRECTED)
     public CashfreeTransferResponse initiateTransfer(CashfreeTransferRequest request) {
         try {
-            String url = cashfreeConfig.getBaseUrl() + "/transfers";
+            String url = cashfreeConfig.getPayoutBaseUrl() + "/transfers";
 
             log.info("Initiate transfer request: {}", request);
 
@@ -80,7 +80,7 @@ public class CashfreePayoutHttpService {
 
     public TransferStatusResponseDTO getTransferStatusByTransferId(String cfTransfer_id) {
         try {
-            String url = cashfreeConfig.getBaseUrl() + "/transfers";
+            String url = cashfreeConfig.getPayoutBaseUrl() + "/transfers";
 
             UriComponentsBuilder builder = fromHttpUrl(url)
                     .queryParam("cf_transfer_id", cfTransfer_id);
