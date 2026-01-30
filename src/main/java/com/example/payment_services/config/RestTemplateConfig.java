@@ -1,4 +1,3 @@
-// RestTemplateConfig.java
 package com.example.payment_services.config;
 
 import org.springframework.context.annotation.Bean;

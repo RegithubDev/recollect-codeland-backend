@@ -1,4 +1,3 @@
-// CashfreeTransferResponse.java
 package com.example.payment_services.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;

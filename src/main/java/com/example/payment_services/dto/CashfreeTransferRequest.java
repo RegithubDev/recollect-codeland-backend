@@ -1,4 +1,3 @@
-// CashfreeTransferRequest.java - For direct API call
 package com.example.payment_services.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
