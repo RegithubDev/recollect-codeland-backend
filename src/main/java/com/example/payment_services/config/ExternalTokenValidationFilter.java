@@ -20,7 +20,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.util.*;
 
-@Component  // Add @Component annotation
+@Component
 public class ExternalTokenValidationFilter extends OncePerRequestFilter {
 
     // Values from application.properties
