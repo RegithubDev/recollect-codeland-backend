@@ -15,7 +15,7 @@ import static org.springframework.web.util.UriComponentsBuilder.fromHttpUrl;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class CashfreeHttpService {
+public class CashfreePayoutHttpService {
 
     private final RestTemplate restTemplate;
     private final CashfreeConfig cashfreeConfig;

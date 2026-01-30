@@ -11,12 +11,12 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class PayoutService {
 
-    private final CashfreeHttpService cashfreeHttpService;
+    private final CashfreePayoutHttpService cashfreePayoutHttpService;
 
     public CashfreeTransferResponse processPayout(CashfreeTransferRequest request) {
         try {
 
-            return cashfreeHttpService.initiateTransfer(request);
+            return cashfreePayoutHttpService.initiateTransfer(request);
 
         } catch (Exception e) {
             log.error("Payout failed", e);
@@ -27,7 +27,7 @@ public class PayoutService {
     public TransferStatusResponseDTO checkPayoutStatus(String cfTransferId) {
         try {
 
-            return cashfreeHttpService
+            return cashfreePayoutHttpService
                     .getTransferStatusByTransferId(cfTransferId);
 
         } catch (Exception e) {

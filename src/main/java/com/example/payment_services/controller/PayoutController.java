@@ -1,6 +1,6 @@
 package com.example.payment_services.controller;
 import com.example.payment_services.dto.*;
-import com.example.payment_services.service.CashfreeHttpService;
+import com.example.payment_services.service.CashfreePayoutHttpService;
 import com.example.payment_services.service.PayoutService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -21,7 +21,7 @@ import java.util.Map;
 public class PayoutController {
 
     private final PayoutService payoutService;
-    private final CashfreeHttpService cashfreeHttpService;
+    private final CashfreePayoutHttpService cashfreePayoutHttpService;
 
     // Create Beneficiary
     @PostMapping("/beneficiary")
@@ -30,7 +30,7 @@ public class PayoutController {
 
         log.info("Creating beneficiary: {}", request.getBeneficiaryId());
 
-        CashfreeBeneficiaryResponse response = cashfreeHttpService.createBeneficiary(request);
+        CashfreeBeneficiaryResponse response = cashfreePayoutHttpService.createBeneficiary(request);
 
         Map<String, Object> result = new HashMap<>();
         result.put("success", true);
