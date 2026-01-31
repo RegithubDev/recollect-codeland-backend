@@ -1,6 +1,6 @@
 package com.example.payment_services.controller;
 import com.example.payment_services.dto.*;
-import com.example.payment_services.service.CashfreePayoutHttpService;
+import com.example.payment_services.service.http.CashfreePayoutHttpService;
 import com.example.payment_services.service.PayoutService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
