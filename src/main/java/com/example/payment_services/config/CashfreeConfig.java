@@ -8,11 +8,13 @@ import org.springframework.stereotype.Component;
 @Component
 @ConfigurationProperties(prefix = "cashfree")
 public class CashfreeConfig {
+    private String payoutBaseUrl;
     private String clientId;
     private String clientSecret;
-    private String payoutBaseUrl;
 
-    public String getPgBaseUrl() {
-        return "https://sandbox.cashfree.com/pg";
-    }
+    private String pgBaseUrl;
+    private String pgClientId;
+    private String pgClientSecret;
+
+    private String verificationBaseUrl;
 }
