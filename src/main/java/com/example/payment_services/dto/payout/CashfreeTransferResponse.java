@@ -1,19 +1,19 @@
-package com.example.payment_services.dto;
+package com.example.payment_services.dto.payout;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 import java.math.BigDecimal;
 
 @Data
-public class TransferStatusResponseDTO {
+public class CashfreeTransferResponse {
     @JsonProperty("transfer_id")
     private String transferId;
 
     @JsonProperty("cf_transfer_id")
-    private String cfTransferId;
+    private String cfTransferId;  // ✅ NOT "reference_id"
 
     @JsonProperty("status")
-    private String status;
+    private String status;  // ✅ NOT "transfer_status"
 
     @JsonProperty("status_code")
     private String statusCode;
@@ -22,25 +22,23 @@ public class TransferStatusResponseDTO {
     private String statusDescription;
 
     @JsonProperty("beneficiary_details")
-    private BeneficiaryDetails beneficiaryDetails;
+    private TransferStatusResponseDTO.BeneficiaryDetails beneficiaryDetails;  // ✅ Nested object
 
     @JsonProperty("currency")
     private String currency;
 
     @JsonProperty("transfer_amount")
-    private BigDecimal transferAmount;
+    private BigDecimal transferAmount;  // ✅ NOT "amount"
 
     @JsonProperty("transfer_mode")
     private String transferMode;
 
-    @JsonProperty("fundsource_id")
-    private String fundsourceId;
-
     @JsonProperty("added_on")
-    private String addedOn;
+    private String addedOn;  // ✅ NOT "initiated_on"
 
     @JsonProperty("updated_on")
-    private String updatedOn;
+    private String updatedOn;  // ✅ NOT "processed_on"
+
 
     @Data
     public static class BeneficiaryDetails {
@@ -48,7 +46,7 @@ public class TransferStatusResponseDTO {
         private String beneficiaryId;
 
         @JsonProperty("beneficiary_instrument_details")
-        private InstrumentDetails beneficiaryInstrumentDetails;
+        private TransferStatusResponseDTO.InstrumentDetails beneficiaryInstrumentDetails;
     }
 
     @Data
@@ -60,3 +58,4 @@ public class TransferStatusResponseDTO {
         private String bankIfsc;
     }
 }
+

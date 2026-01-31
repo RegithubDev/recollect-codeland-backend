@@ -1,4 +1,4 @@
-package com.example.payment_services.dto;
+package com.example.payment_services.dto.payout;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;

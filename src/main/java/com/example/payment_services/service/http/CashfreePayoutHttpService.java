@@ -1,7 +1,7 @@
 package com.example.payment_services.service.http;
 
 import com.example.payment_services.config.CashfreeConfig;
-import com.example.payment_services.dto.*;
+import com.example.payment_services.dto.payout.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.*;

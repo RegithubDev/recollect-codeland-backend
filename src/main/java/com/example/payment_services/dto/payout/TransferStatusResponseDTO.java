@@ -1,19 +1,19 @@
-package com.example.payment_services.dto;
+package com.example.payment_services.dto.payout;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 import java.math.BigDecimal;
 
 @Data
-public class CashfreeTransferResponse {
+public class TransferStatusResponseDTO {
     @JsonProperty("transfer_id")
     private String transferId;
 
     @JsonProperty("cf_transfer_id")
-    private String cfTransferId;  // ✅ NOT "reference_id"
+    private String cfTransferId;
 
     @JsonProperty("status")
-    private String status;  // ✅ NOT "transfer_status"
+    private String status;
 
     @JsonProperty("status_code")
     private String statusCode;
@@ -22,23 +22,25 @@ public class CashfreeTransferResponse {
     private String statusDescription;
 
     @JsonProperty("beneficiary_details")
-    private TransferStatusResponseDTO.BeneficiaryDetails beneficiaryDetails;  // ✅ Nested object
+    private BeneficiaryDetails beneficiaryDetails;
 
     @JsonProperty("currency")
     private String currency;
 
     @JsonProperty("transfer_amount")
-    private BigDecimal transferAmount;  // ✅ NOT "amount"
+    private BigDecimal transferAmount;
 
     @JsonProperty("transfer_mode")
     private String transferMode;
 
+    @JsonProperty("fundsource_id")
+    private String fundsourceId;
+
     @JsonProperty("added_on")
-    private String addedOn;  // ✅ NOT "initiated_on"
+    private String addedOn;
 
     @JsonProperty("updated_on")
-    private String updatedOn;  // ✅ NOT "processed_on"
-
+    private String updatedOn;
 
     @Data
     public static class BeneficiaryDetails {
@@ -46,7 +48,7 @@ public class CashfreeTransferResponse {
         private String beneficiaryId;
 
         @JsonProperty("beneficiary_instrument_details")
-        private TransferStatusResponseDTO.InstrumentDetails beneficiaryInstrumentDetails;
+        private InstrumentDetails beneficiaryInstrumentDetails;
     }
 
     @Data
@@ -58,4 +60,3 @@ public class CashfreeTransferResponse {
         private String bankIfsc;
     }
 }
-
