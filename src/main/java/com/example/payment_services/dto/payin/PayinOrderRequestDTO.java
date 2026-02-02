@@ -2,10 +2,7 @@
 package com.example.payment_services.dto.payin;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import jakarta.persistence.Column;
 import lombok.Data;
-
-import java.math.BigDecimal;
 
 @Data
 public class PayinOrderRequestDTO {
@@ -14,12 +11,6 @@ public class PayinOrderRequestDTO {
 
     @JsonProperty("order_amount")
     private Double orderAmount;
-
-    @JsonProperty("wallet_amount")
-    private BigDecimal walletAmount;
-
-    @JsonProperty("real_amount")
-    private BigDecimal realAmount;
 
     @JsonProperty("customer_details")
     private CustomerDetails customerDetails;
