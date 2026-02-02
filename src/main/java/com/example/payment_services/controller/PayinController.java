@@ -31,7 +31,7 @@ public class PayinController {
     }
 
     // 2. Get Order
-    @GetMapping("/get/order/{orderId}")
+    @GetMapping("/get/order/{orderId}/{cfPaymentId}/{amount}/{paymentMethod}")
     public ResponseEntity<PayinOrderResponseDTO> getOrder(
             @PathVariable String orderId,
             @PathVariable String cfPaymentId,
