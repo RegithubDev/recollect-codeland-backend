@@ -34,7 +34,8 @@ public class PayoutController {
 
     @Operation(
             summary = "Create Beneficiary",
-            description = "Adds a new beneficiary for payouts with bank account/UPI details"
+            description = "Adds a new beneficiary for payouts with bank account/UPI details" +
+                    "mode:(banktransfer, imps, neft, rtgs, upi, paytm, amazonpay, card, cardupi)"
     )
     @ApiResponses(value = {
             @ApiResponse(
