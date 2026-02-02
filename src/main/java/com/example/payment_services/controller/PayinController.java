@@ -1,6 +1,7 @@
 package com.example.payment_services.controller;
 
 import com.example.payment_services.dto.payin.*;
+import com.example.payment_services.entity.PaymentTransaction;
 import com.example.payment_services.service.PayinService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -58,7 +59,7 @@ public class PayinController {
             @ApiResponse(responseCode = "400", description = "Invalid parameters or mismatched data")
     })
     @GetMapping("/get/order/{orderId}/{cfPaymentId}/{amount}/{paymentMethod}")
-    public ResponseEntity<PayinOrderResponseDTO> getOrder(
+    public ResponseEntity<PaymentTransaction> getOrder(
             @Parameter(description = "Unique order identifier", example = "ORD_12345", required = true)
             @PathVariable String orderId,
 
@@ -72,7 +73,7 @@ public class PayinController {
             @PathVariable String paymentMethod) {
 
         log.info("Getting order: {}", orderId);
-        PayinOrderResponseDTO order = payinService.getOrderDetails(orderId, cfPaymentId, amount, paymentMethod);
+        PaymentTransaction order = payinService.getOrderDetails(orderId, cfPaymentId, amount, paymentMethod);
         return ResponseEntity.ok(order);
     }
 

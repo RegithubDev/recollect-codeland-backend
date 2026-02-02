@@ -16,4 +16,10 @@ public class RefundRequestDTO {
 
     @JsonProperty("refund_speed")
     private String refundSpeed = "STANDARD";
+
+    @JsonProperty("wallet_amount")
+    private Double walletAmount;
+
+    @JsonProperty("real_amount")
+    private Double realAmount;
 }

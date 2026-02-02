@@ -32,6 +32,8 @@ public class PaymentDataService {
         transaction.setCfOrderId(orderResponse.getCfOrderId());
         transaction.setPaymentSessionId(orderResponse.getPaymentSessionId());
         transaction.setOrderAmount(BigDecimal.valueOf(orderResponse.getOrderAmount()));
+        transaction.setRealAmount(BigDecimal.valueOf(orderResponse.getRealAmount()));
+        transaction.setWalletAmount(BigDecimal.valueOf(orderResponse.getWalletAmount()));
         transaction.setOrderCurrency(orderResponse.getOrderCurrency());
         transaction.setOrderStatus(PaymentTransaction.OrderStatus.valueOf(orderResponse.getOrderStatus()));
 

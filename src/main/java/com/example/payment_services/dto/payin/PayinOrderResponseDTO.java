@@ -4,6 +4,8 @@ package com.example.payment_services.dto.payin;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
+import java.math.BigDecimal;
+
 @Data
 public class PayinOrderResponseDTO {
     @JsonProperty("cf_order_id")
@@ -14,6 +16,12 @@ public class PayinOrderResponseDTO {
 
     @JsonProperty("order_amount")
     private Double orderAmount;
+
+    @JsonProperty("wallet_amount")
+    private Double walletAmount;
+
+    @JsonProperty("real_amount")
+    private Double realAmount;
 
     @JsonProperty("order_currency")
     private String orderCurrency;

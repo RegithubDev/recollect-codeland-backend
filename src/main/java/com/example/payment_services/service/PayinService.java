@@ -44,7 +44,7 @@ public class PayinService {
         }
     }
 
-    public PayinOrderResponseDTO getOrderDetails(String orderId, String cfPaymentId, BigDecimal amount, String paymentMethod) {
+    public PaymentTransaction getOrderDetails(String orderId, String cfPaymentId, BigDecimal amount, String paymentMethod) {
         try {
             PayinOrderResponseDTO order = cashfreePayinHttpService.getOrder(orderId);
 
@@ -54,7 +54,7 @@ public class PayinService {
             // save to database
             PaymentTransaction paymentTransaction = paymentDataService.updatePayment(orderId, cfPaymentId, amount, paymentMethod);
             log.info("Payment order updated in database:{}", paymentTransaction);
-            return order;
+            return paymentTransaction;
 
         } catch (Exception e) {
             log.error("Get order details error", e);
