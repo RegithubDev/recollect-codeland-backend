@@ -43,7 +43,7 @@ public class PaymentTransaction {
     private String orderNote;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "order_tags", columnDefinition = "jsonb")
+    @Column(name = "order_tags")
     private Map<String, Object> orderTags;
 
     @Column(name = "order_expiry_time")
@@ -123,7 +123,7 @@ public class PaymentTransaction {
     private String refundMode; // NORMAL
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "refund_speed_details", columnDefinition = "jsonb")
+    @Column(name = "refund_speed_details")
     private Map<String, Object> refundSpeedDetails;
 
     @Column(name = "refund_created_at")
@@ -137,40 +137,40 @@ public class PaymentTransaction {
     private CustomerDetails customerDetails;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "customer_json", columnDefinition = "jsonb")
+    @Column(name = "customer_json")
     private Map<String, Object> customerJson;
 
     // ========== EXTENDED DETAILS (JSON) ==========
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "order_meta", columnDefinition = "jsonb")
+    @Column(name = "order_meta")
     private Map<String, Object> orderMeta;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "order_splits", columnDefinition = "jsonb")
+    @Column(name = "order_splits")
     private Map<String, Object> orderSplits;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "charges", columnDefinition = "jsonb")
+    @Column(name = "charges")
     private Map<String, Object> charges;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "shipping_address", columnDefinition = "jsonb")
+    @Column(name = "shipping_address")
     private Map<String, Object> shippingAddress;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "billing_address", columnDefinition = "jsonb")
+    @Column(name = "billing_address")
     private Map<String, Object> billingAddress;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "cart", columnDefinition = "jsonb")
+    @Column(name = "cart")
     private Map<String, Object> cart;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "offer", columnDefinition = "jsonb")
+    @Column(name = "offer")
     private Map<String, Object> offer;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "refund_splits", columnDefinition = "jsonb")
+    @Column(name = "refund_splits")
     private Map<String, Object> refundSplits;
 
     // ========== TIMESTAMPS ==========
