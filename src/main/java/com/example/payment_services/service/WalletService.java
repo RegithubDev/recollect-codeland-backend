@@ -33,7 +33,7 @@ public class WalletService {
     }
 
     @Transactional
-    public BigDecimal GetWalletBalance(String userID) {
+    public BigDecimal getWalletBalance(String userID) {
         return ledgerService.getCustomerWalletBalance(userID);
     }
 }

@@ -1,7 +1,15 @@
 package com.example.payment_services.controller;
+
 import com.example.payment_services.dto.payout.*;
 import com.example.payment_services.service.http.CashfreePayoutHttpService;
 import com.example.payment_services.service.PayoutService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,14 +26,41 @@ import java.util.Map;
 @RequiredArgsConstructor
 @Validated
 @Slf4j
+@Tag(name = "Payout Operations", description = "APIs for managing beneficiary creation and fund transfers")
 public class PayoutController {
 
     private final PayoutService payoutService;
     private final CashfreePayoutHttpService cashfreePayoutHttpService;
 
-    // Create Beneficiary
+    @Operation(
+            summary = "Create Beneficiary",
+            description = "Adds a new beneficiary for payouts with bank account/UPI details"
+    )
+    @ApiResponses(value = {
+            @ApiResponse(
+                    responseCode = "201",
+                    description = "Beneficiary created successfully",
+                    content = @Content(schema = @Schema(implementation = Map.class))
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Invalid beneficiary data or validation failed"
+            ),
+            @ApiResponse(
+                    responseCode = "409",
+                    description = "Beneficiary already exists"
+            ),
+            @ApiResponse(
+                    responseCode = "500",
+                    description = "Internal server error or Cashfree API failure"
+            )
+    })
     @PostMapping("/add/beneficiary")
     public ResponseEntity<Map<String, Object>> createBeneficiary(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "Beneficiary details including bank/UPI information",
+                    required = true
+            )
             @Valid @RequestBody CashfreeBeneficiaryRequest request) {
 
         log.info("Creating beneficiary: {}", request.getBeneficiaryId());
@@ -41,9 +76,35 @@ public class PayoutController {
         return ResponseEntity.status(HttpStatus.CREATED).body(result);
     }
 
-    // Initiate Transfer
+    @Operation(
+            summary = "Initiate Payout Transfer",
+            description = "Initiates a fund transfer to a registered beneficiary"
+    )
+    @ApiResponses(value = {
+            @ApiResponse(
+                    responseCode = "202",
+                    description = "Transfer initiated and accepted for processing",
+                    content = @Content(schema = @Schema(implementation = CashfreeTransferResponse.class))
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Invalid transfer request or insufficient funds"
+            ),
+            @ApiResponse(
+                    responseCode = "404",
+                    description = "Beneficiary not found"
+            ),
+            @ApiResponse(
+                    responseCode = "422",
+                    description = "Transfer validation failed"
+            )
+    })
     @PostMapping("/initiate/transfer")
     public ResponseEntity<CashfreeTransferResponse> initiateTransfer(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "Transfer request with amount, beneficiary, and reference details",
+                    required = true
+            )
             @Valid @RequestBody CashfreeTransferRequest request) {
 
         log.info("Initiating transfer: {}", request.getTransferId());
@@ -53,9 +114,32 @@ public class PayoutController {
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(response);
     }
 
-    // Get Transfer Status
+    @Operation(
+            summary = "Get Transfer Status",
+            description = "Retrieves the current status of a payout transfer"
+    )
+    @ApiResponses(value = {
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Transfer status retrieved successfully",
+                    content = @Content(schema = @Schema(implementation = TransferStatusResponseDTO.class))
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Missing transfer identifier"
+            ),
+            @ApiResponse(
+                    responseCode = "404",
+                    description = "Transfer not found"
+            )
+    })
     @GetMapping("/get/{cfTransferId}/status")
     public ResponseEntity<TransferStatusResponseDTO> getTransferStatus(
+            @Parameter(
+                    description = "Cashfree transfer reference ID",
+                    example = "CF_TRANS_123456789",
+                    required = false
+            )
             @RequestParam(required = false) String cfTransferId) {
 
         TransferStatusResponseDTO response;
@@ -70,7 +154,21 @@ public class PayoutController {
         return ResponseEntity.ok(response);
     }
 
-    // Health Check
+    @Operation(
+            summary = "Payout Service Health Check",
+            description = "Verifies the availability and operational status of payout services"
+    )
+    @ApiResponses(value = {
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Service is operational",
+                    content = @Content(schema = @Schema(implementation = Map.class))
+            ),
+            @ApiResponse(
+                    responseCode = "503",
+                    description = "Service is unavailable"
+            )
+    })
     @GetMapping("/health/check")
     public ResponseEntity<Map<String, String>> healthCheck() {
         Map<String, String> response = new HashMap<>();
