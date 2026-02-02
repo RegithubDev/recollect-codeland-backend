@@ -185,7 +185,15 @@ public class ExternalTokenValidationFilter extends OncePerRequestFilter {
                 lowerUri.equals("/error")) {
             return true;
         }
-
+        // ========== ALL WEBHOOK ENDPOINTS ==========
+        // Allow ALL endpoints under /api/webhook/** without authentication
+        if (requestURI.startsWith("/api/webhook/")) {
+            // Only allow POST for actual webhooks, GET for health checks
+            if ("POST".equals(method) || "GET".equals(method)) {
+                logger.debug("Allowing webhook endpoint without auth: " + requestURI);
+                return true;
+            }
+        }
         // Actuator endpoints
         if (lowerUri.startsWith("/actuator/health") ||
                 lowerUri.startsWith("/actuator/info")) {
