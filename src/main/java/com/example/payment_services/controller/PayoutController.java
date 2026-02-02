@@ -24,7 +24,7 @@ public class PayoutController {
     private final CashfreePayoutHttpService cashfreePayoutHttpService;
 
     // Create Beneficiary
-    @PostMapping("/beneficiary")
+    @PostMapping("/add/beneficiary")
     public ResponseEntity<Map<String, Object>> createBeneficiary(
             @Valid @RequestBody CashfreeBeneficiaryRequest request) {
 
@@ -42,7 +42,7 @@ public class PayoutController {
     }
 
     // Initiate Transfer
-    @PostMapping("/transfer")
+    @PostMapping("/initiate/transfer")
     public ResponseEntity<CashfreeTransferResponse> initiateTransfer(
             @Valid @RequestBody CashfreeTransferRequest request) {
 
@@ -54,7 +54,7 @@ public class PayoutController {
     }
 
     // Get Transfer Status
-    @GetMapping("/transfer/status")
+    @GetMapping("/get/{cfTransferId}/status")
     public ResponseEntity<TransferStatusResponseDTO> getTransferStatus(
             @RequestParam(required = false) String cfTransferId) {
 
@@ -71,7 +71,7 @@ public class PayoutController {
     }
 
     // Health Check
-    @GetMapping("/health")
+    @GetMapping("/health/check")
     public ResponseEntity<Map<String, String>> healthCheck() {
         Map<String, String> response = new HashMap<>();
         response.put("status", "UP");

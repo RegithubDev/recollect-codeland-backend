@@ -1,10 +1,14 @@
 package com.example.payment_services.service;
 
 import com.example.payment_services.dto.payin.*;
+import com.example.payment_services.entity.PaymentTransaction;
 import com.example.payment_services.service.http.CashfreePayinHttpService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+
+import java.math.BigDecimal;
+import java.text.DecimalFormat;
 
 @Service
 @RequiredArgsConstructor
@@ -12,6 +16,7 @@ import org.springframework.stereotype.Service;
 public class PayinService {
 
     private final CashfreePayinHttpService cashfreePayinHttpService;
+    private final PaymentDataService paymentDataService;
 
     public PayinOrderResponseDTO createPaymentOrder(PayinOrderRequestDTO request) {
         try {
@@ -25,29 +30,30 @@ public class PayinService {
                 throw new IllegalArgumentException("Customer details are required");
             }
 
-            // Call Cashfree PG API
             PayinOrderResponseDTO response = cashfreePayinHttpService.createOrder(request);
 
             log.info("Payment order created: orderId={}, cfOrderId={}",
                     response.getOrderId(), response.getCfOrderId());
-
+            // save to database
+            PaymentTransaction paymentTransaction = paymentDataService.saveOrder(response);
+            log.info("Payment order inserted in database:{}", paymentTransaction);
             return response;
-
         } catch (Exception e) {
             log.error("Create payment order error", e);
             throw new RuntimeException("Payment order creation failed: " + e.getMessage());
         }
     }
 
-    public PayinOrderResponseDTO getOrderDetails(String orderId) {
+    public PayinOrderResponseDTO getOrderDetails(String orderId, String cfPaymentId, BigDecimal amount, String paymentMethod) {
         try {
             PayinOrderResponseDTO order = cashfreePayinHttpService.getOrder(orderId);
 
-            // Add any business logic
             if ("TERMINATED".equalsIgnoreCase(order.getOrderStatus())) {
                 log.warn("Order {} is terminated", orderId);
             }
-
+            // save to database
+            PaymentTransaction paymentTransaction = paymentDataService.updatePayment(orderId, cfPaymentId, amount, paymentMethod);
+            log.info("Payment order updated in database:{}", paymentTransaction);
             return order;
 
         } catch (Exception e) {

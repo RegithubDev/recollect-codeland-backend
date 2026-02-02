@@ -1,10 +1,14 @@
 package com.example.payment_services.service;
 
+import com.example.payment_services.dto.refund.RefundApprovalDTO;
 import com.example.payment_services.dto.refund.*;
+import com.example.payment_services.entity.PaymentTransaction;
 import com.example.payment_services.service.http.CashfreeRefundHttpService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+
+import static com.example.payment_services.util.SecurityUtil.getCurrentUserId;
 
 @Service
 @RequiredArgsConstructor
@@ -12,6 +16,8 @@ import org.springframework.stereotype.Service;
 public class RefundService {
 
     private final CashfreeRefundHttpService cashfreeRefundHttpService;
+    private final PaymentDataService paymentDataService;
+    private final LedgerService ledgerService;
 
     public RefundResponseDTO initiateRefund(String orderId, RefundRequestDTO request) {
         try {
@@ -23,7 +29,9 @@ public class RefundService {
 
             log.info("Refund initiated: orderId={}, refundId={}, cfRefundId={}",
                     orderId, request.getRefundId(), response.getCfRefundId());
-
+            // save to database
+            PaymentTransaction paymentTransaction = paymentDataService.addRefund(orderId, response);
+            log.info("Payment refund updated in database:{}", paymentTransaction);
             return response;
 
         } catch (Exception e) {
@@ -32,17 +40,18 @@ public class RefundService {
         }
     }
 
-    public RefundResponseDTO getRefundDetails(String orderId, String refundId) {
+    public RefundResponseDTO getRefundDetails(String orderId, String cfRefundId) {
         try {
-            RefundResponseDTO refund = cashfreeRefundHttpService.getRefund(orderId, refundId);
+            RefundResponseDTO refund = cashfreeRefundHttpService.getRefund(orderId, cfRefundId);
 
             // Add business logic if needed
             if ("SUCCESS".equalsIgnoreCase(refund.getRefundStatus())) {
-                log.info("Refund {} completed successfully", refundId);
+                log.info("Refund {} completed successfully", cfRefundId);
             } else if ("PENDING".equalsIgnoreCase(refund.getRefundStatus())) {
-                log.info("Refund {} is pending", refundId);
+                log.info("Refund {} is pending", cfRefundId);
             }
-
+            PaymentTransaction paymentTransaction = paymentDataService.updateRefundStatus(orderId, cfRefundId);
+            log.info("Payment refund status updated in database:{}", paymentTransaction);
             return refund;
 
         } catch (Exception e) {
@@ -76,6 +85,13 @@ public class RefundService {
             return false;
         }
     }
+
+    public RefundApprovalDTO handleRefundApproved(RefundApprovalDTO approvalRequest){
+        ledgerService.recordRefundApproved(approvalRequest.getPaymentTransactionId(), approvalRequest.getTransactionId(),
+                approvalRequest.getCustomerId(), approvalRequest.getOrderId(), approvalRequest.getAmount(), getCurrentUserId());
+        log.info("Refund processed RefundApproved received: Cashfreepay RefundId={}", approvalRequest);
+        return approvalRequest;
+    };
 
     private void validateRefundRequest(RefundRequestDTO request) {
         if (request.getRefundAmount() == null || request.getRefundAmount() <= 0) {

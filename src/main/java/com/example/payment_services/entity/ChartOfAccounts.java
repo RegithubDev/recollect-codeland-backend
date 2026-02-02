@@ -24,12 +24,8 @@ public class ChartOfAccounts {
     private AccountType accountType;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "normal_balance", nullable = false, length = 10)
-    private NormalBalance normalBalance; // DEBIT / CREDIT
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "ledger_type", nullable = false, length = 20)
-    private LedgerType ledgerType; // REAL / WALLET
+    @Column(name = "transaction_type", nullable = false, length = 20)
+    private TransactionType transactionType; // REAL / WALLET
 
     @Column(columnDefinition = "TEXT")
     private String description;
@@ -44,14 +40,10 @@ public class ChartOfAccounts {
     private LocalDateTime updatedAt;
 
     public enum AccountType {
-        ASSET, LIABILITY, INCOME, EXPENSE, CLEARING, Wallet
+        ASSET, LIABILITY, INCOME, EXPENSE, CLEARING
     }
 
-    public enum NormalBalance {
-        DEBIT, CREDIT
-    }
-
-    public enum LedgerType {
+    public enum TransactionType {
         REAL, WALLET
     }
 }

@@ -4,121 +4,176 @@ import jakarta.persistence.*;
 import lombok.Data;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
-import org.json.JSONObject;
-
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-
-import static com.example.payment_services.util.SecurityUtil.getCurrentUserId;
+import java.util.Map;
 
 @Entity
 @Table(name = "payment_transactions")
 @Data
 public class PaymentTransaction {
 
-    // ============ PRIMARY KEY ============
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @GeneratedValue(strategy = GenerationType.UUID)
+    private String id;
 
-    // ============ TRANSACTION IDENTIFIERS ============
-    @Column(name = "transaction_id", unique = true, nullable = false, length = 100)
-    private String transactionId;
-
-    @Column(name = "razorpay_payment_id", length = 100)
-    private String razorpayPaymentId;
-
-    @Column(name = "razorpay_order_id", length = 100)
-    private String razorpayOrderId;
-
-    @Column(name = "razorpay_refund_id", length = 100)
-    private String razorpayRefundId;
-
-    // ============ BUSINESS IDENTIFIERS ============
-    @Column(name = "customer_id", nullable = false, length = 50)
-    private String customerId;
-
-    @Column(name = "order_id", length = 50)
+    // ========== ORDER INFORMATION ==========
+    @Column(name = "order_id", unique = true, nullable = false)
     private String orderId;
 
-    // ============ TRANSACTION DETAILS ============
-    @Enumerated(EnumType.STRING)
-    @Column(name = "transaction_type", nullable = false, length = 30)
-    private TransactionType transactionType;
+    @Column(name = "cf_order_id", unique = true)
+    private String cfOrderId;
+
+    @Column(name = "payment_session_id")
+    private String paymentSessionId;
+
+    @Column(name = "order_amount", precision = 12, scale = 2)
+    private BigDecimal orderAmount;
+
+    @Column(name = "order_currency")
+    private String orderCurrency = "INR";
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "payment_method", length = 30)
-    private PaymentMethod paymentMethod;
+    @Column(name = "order_status")
+    private OrderStatus orderStatus = OrderStatus.CREATED;
 
-    @Column(name = "amount", nullable = false, precision = 10, scale = 2)
-    private BigDecimal amount;
+    @Column(name = "order_note", length = 500)
+    private String orderNote;
 
-    @Column(name = "currency", length = 10)
-    private String currency = "INR";
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "order_tags", columnDefinition = "jsonb")
+    private Map<String, Object> orderTags;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 30)
-    private TransactionStatus status;
+    @Column(name = "order_expiry_time")
+    private LocalDateTime orderExpiryTime;
 
-    // ============ REFUND FIELDS ============
-    @Column(name = "refund_requested_at")
-    private LocalDateTime refundRequestedAt;
+    // ========== PAYMENT INFORMATION ==========
+    @Column(name = "cf_payment_id")
+    private String cfPaymentId;
 
-    @Column(name = "refund_approved_by", length = 50)
-    private String refundApprovedBy;
-
-    @Column(name = "refund_approved_at")
-    private LocalDateTime refundApprovedAt;
-
-    @Column(name = "refund_approval_remark", columnDefinition = "TEXT")
-    private String refundApprovalRemark;
+    @Column(name = "payment_amount", precision = 12, scale = 2)
+    private BigDecimal paymentAmount;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "refund_status", length = 30)
+    @Column(name = "payment_status")
+    private PaymentStatus paymentStatus = PaymentStatus.PENDING;
+
+    @Column(name = "payment_method")
+    private String paymentMethod; // UPI, CARD, NETBANKING
+
+    @Column(name = "payment_gateway")
+    private String paymentGateway = "cashfree";
+
+    @Column(name = "bank_reference")
+    private String bankReference;
+
+    @Column(name = "utr")
+    private String utr;
+
+    @Column(name = "auth_code")
+    private String authCode;
+
+    @Column(name = "card_last4")
+    private String cardLast4;
+
+    @Column(name = "card_network")
+    private String cardNetwork;
+
+    @Column(name = "gateway_fee", precision = 10, scale = 2)
+    private BigDecimal gatewayFee = BigDecimal.ZERO;
+
+    @Column(name = "settlement_amount", precision = 12, scale = 2)
+    private BigDecimal settlementAmount;
+
+    @Column(name = "payment_processed_at")
+    private LocalDateTime paymentProcessedAt;
+
+    @Column(name = "settlement_date")
+    private LocalDateTime settlementDate;
+
+    // ========== REFUND INFORMATION ==========
+    @Column(name = "cf_refund_id")
+    private String cfRefundId;
+
+    @Column(name = "refund_id")
+    private String refundId;
+
+    @Column(name = "refund_amount", precision = 12, scale = 2)
+    private BigDecimal refundAmount = BigDecimal.ZERO;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "refund_status")
     private RefundStatus refundStatus;
 
-    @Column(name = "refund_requester_id", length = 50)
-    private String refundRequesterId;
+    @Column(name = "refund_note", length = 500)
+    private String refundNote;
 
-    @Column(name = "refund_reason", length = 500)
-    private String refundReason;
+    @Column(name = "refund_speed")
+    private String refundSpeed; // STANDARD, INSTANT
 
-    @Column(name = "refund_approver_id", length = 50)
-    private String refundApproverId;
+    @Column(name = "refund_arn")
+    private String refundArn;
 
-    @Column(name = "approval_comments", columnDefinition = "TEXT")
-    private String approvalComments;
+    @Column(name = "refund_charge", precision = 10, scale = 2)
+    private BigDecimal refundCharge = BigDecimal.ZERO;
+
+    @Column(name = "refund_mode")
+    private String refundMode; // NORMAL
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "refund_speed_details", columnDefinition = "jsonb")
+    private Map<String, Object> refundSpeedDetails;
+
+    @Column(name = "refund_created_at")
+    private LocalDateTime refundCreatedAt;
 
     @Column(name = "refund_processed_at")
     private LocalDateTime refundProcessedAt;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "refund_approval_status", length = 30)
-    private RefundApprovalStatus refundApprovalStatus = RefundApprovalStatus.PENDING;
+    // ========== CUSTOMER INFORMATION ==========
+    @Embedded
+    private CustomerDetails customerDetails;
 
-    @Column(name = "is_partial_refund")
-    private Boolean isPartialRefund = false;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "customer_json", columnDefinition = "jsonb")
+    private Map<String, Object> customerJson;
 
-    @Column(name = "approval_reference", length = 100)
-    private String approvalReference;
+    // ========== EXTENDED DETAILS (JSON) ==========
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "order_meta", columnDefinition = "jsonb")
+    private Map<String, Object> orderMeta;
 
-    @Column(name = "refund_amount", precision = 10, scale = 2)
-    private BigDecimal refundAmount;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "order_splits", columnDefinition = "jsonb")
+    private Map<String, Object> orderSplits;
 
-    @Column(name = "original_transaction_id", length = 100)
-    private String originalTransactionId;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "charges", columnDefinition = "jsonb")
+    private Map<String, Object> charges;
 
-    // ============ 3 METADATA SECTIONS ============
-    @Column(name = "order_metadata", columnDefinition = "JSON")
-    private String orderMetadata;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "shipping_address", columnDefinition = "jsonb")
+    private Map<String, Object> shippingAddress;
 
-    @Column(name = "payment_metadata", columnDefinition = "JSON")
-    private String paymentMetadata;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "billing_address", columnDefinition = "jsonb")
+    private Map<String, Object> billingAddress;
 
-    @Column(name = "refund_metadata", columnDefinition = "JSON")
-    private String refundMetadata;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "cart", columnDefinition = "jsonb")
+    private Map<String, Object> cart;
 
-    // ============ TIMESTAMPS ============
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "offer", columnDefinition = "jsonb")
+    private Map<String, Object> offer;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "refund_splits", columnDefinition = "jsonb")
+    private Map<String, Object> refundSplits;
+
+    // ========== TIMESTAMPS ==========
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
@@ -127,311 +182,108 @@ public class PaymentTransaction {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    @Column(name = "created_uid", updatable = false)
-    private String createdUid;
+    // ========== BUSINESS FIELDS ==========
+    @Column(name = "merchant_id")
+    private String merchantId;
 
-    @Column(name = "updated_uid")
-    private String updatedUid;
+    @Column(name = "user_id")
+    private String userId;
 
-    // ============ ENUM DEFINITIONS ============
-    public enum TransactionType {
-        PAYIN, REFUND, WALLET_TRANSFER
+    @Column(name = "product_id")
+    private String productId;
+
+    @Column(name = "invoice_number")
+    private String invoiceNumber;
+
+    @Column(name = "attempt_count")
+    private Integer attemptCount = 0;
+
+    @Column(name = "callback_received")
+    private Boolean callbackReceived = false;
+
+    @Column(name = "webhook_payload", columnDefinition = "text")
+    private String webhookPayload;
+
+    @Column(name = "entity")
+    private String entity = "order";
+
+    // ========== ENUMS ==========
+    public enum OrderStatus {
+        CREATED, ACTIVE, PAID, FAILED, TERMINATED, EXPIRED
     }
 
-    public enum PaymentMethod {
-        CARD, UPI, NETBANKING, WALLET, EMI
-    }
-
-    public enum TransactionStatus {
-        CREATED, PENDING, CAPTURED, FAILED
+    public enum PaymentStatus {
+        PENDING, SUCCESS, FAILED, PROCESSING, CANCELLED
     }
 
     public enum RefundStatus {
-        NONE, REQUESTED, PENDING, PROCESSED, FAILED
+        PENDING, SUCCESS, FAILED, PROCESSING, REVERSED
     }
 
-    public enum RefundApprovalStatus {
-        NOT_APPLICABLE, PENDING, APPROVED, REJECTED
+    // ========== EMBEDDABLE CLASSES ==========
+    @Embeddable
+    @Data
+    public static class CustomerDetails {
+        @Column(name = "customer_id")
+        private String customerId;
+
+        @Column(name = "customer_name")
+        private String customerName;
+
+        @Column(name = "customer_email")
+        private String customerEmail;
+
+        @Column(name = "customer_phone")
+        private String customerPhone;
+
+        @Column(name = "customer_uid")
+        private String customerUid;
     }
 
-    // ============ CORRECTED ACTION-BASED METHODS ============
-
-    /**
-     * METHOD 1: For ORDER CREATE action
-     * Called when creating a new payment order
-     */
-    public void setOrderCreateFields(String transactionId, String customerId, String orderId,
-                                     BigDecimal amount, String razorpayOrderId, JSONObject razorpayResponse) {
-        this.transactionId = transactionId;
-        this.customerId = customerId;
-        this.orderId = orderId;
-        this.amount = amount;
-        this.razorpayOrderId = razorpayOrderId;
-        this.transactionType = TransactionType.PAYIN;
-        this.status = TransactionStatus.CREATED;
-        this.updatedUid = getCurrentUserId();
-        this.updatedAt = LocalDateTime.now();
-
-        // Set order metadata - CREATE NEW
-        JSONObject orderMeta = new JSONObject();
-        JSONObject createOrder = new JSONObject();
-        createOrder.put("razorpay_order_id", razorpayOrderId);
-        createOrder.put("razorpay_response", razorpayResponse);
-        createOrder.put("created_at", LocalDateTime.now().toString());
-        orderMeta.put("create_order", createOrder);
-        this.orderMetadata = orderMeta.toString(); // Use = not +=
+    // ========== BUSINESS METHODS ==========
+    public boolean isRefundable() {
+        return paymentStatus == PaymentStatus.SUCCESS &&
+                orderStatus != OrderStatus.TERMINATED &&
+                orderStatus != OrderStatus.EXPIRED;
     }
 
-    /**
-     * METHOD 2: For PAYMENT CAPTURE action
-     * Called when payment is successfully captured
-     */
-    public void setPaymentCaptureFields(String razorpayPaymentId, String paymentMethod,
-                                        JSONObject paymentDetails, JSONObject webhookPayload) {
-        this.razorpayPaymentId = razorpayPaymentId;
-        this.paymentMethod = PaymentMethod.valueOf(paymentMethod.toUpperCase());
-        this.status = TransactionStatus.CAPTURED;
-        this.updatedUid = getCurrentUserId();
-        this.updatedAt = LocalDateTime.now();
-
-        // Set payment metadata - CREATE NEW or MERGE
-        JSONObject paymentMeta = this.paymentMetadata != null ?
-                new JSONObject(this.paymentMetadata) : new JSONObject();
-
-        JSONObject captureDetails = new JSONObject();
-        captureDetails.put("razorpay_payment_id", razorpayPaymentId);
-        captureDetails.put("captured_at", LocalDateTime.now().toString());
-        captureDetails.put("payment_method", paymentMethod);
-        captureDetails.put("payment_details", paymentDetails);
-        captureDetails.put("webhook_payload", webhookPayload);
-
-        paymentMeta.put("payment_capture", captureDetails);
-        this.paymentMetadata = paymentMeta.toString();
-    }
-
-    /**
-     * METHOD 3: For PAYMENT VERIFICATION action
-     * Called when manually verifying payment (QR/UPI)
-     */
-    public void setPaymentVerificationFields(String razorpayPaymentId, boolean signatureVerified,
-                                             JSONObject verificationDetails) {
-        this.razorpayPaymentId = razorpayPaymentId;
-        this.status = TransactionStatus.CAPTURED;
-        this.updatedUid = getCurrentUserId();
-        this.updatedAt = LocalDateTime.now();
-
-        // Update payment metadata - MERGE with existing
-        JSONObject paymentMeta = this.paymentMetadata != null ?
-                new JSONObject(this.paymentMetadata) : new JSONObject();
-
-        JSONObject verification = new JSONObject();
-        verification.put("verified_at", LocalDateTime.now().toString());
-        verification.put("signature_verified", signatureVerified);
-        verification.put("verification_details", verificationDetails);
-
-        paymentMeta.put("payment_verification", verification);
-        this.paymentMetadata = paymentMeta.toString();
-    }
-
-    /**
-     * METHOD 4: For REFUND REQUEST action
-     * Called when customer requests a refund
-     */
-    public void setRefundRequestFields(String refundTransactionId, String originalTransactionId,
-                                       BigDecimal refundAmount, String reason, String requesterId) {
-        this.transactionId = refundTransactionId;
-        this.originalTransactionId = originalTransactionId;
-        this.refundAmount = refundAmount;
-        this.refundReason = reason;
-        this.refundRequesterId = requesterId;
-        this.transactionType = TransactionType.REFUND;
-        this.status = TransactionStatus.PENDING;
-        this.refundStatus = RefundStatus.REQUESTED;
-        this.refundApprovalStatus = RefundApprovalStatus.PENDING;
-        this.refundRequestedAt = LocalDateTime.now();
-        this.updatedUid = getCurrentUserId();
-        this.updatedAt = LocalDateTime.now();
-
-        // Set refund metadata - CREATE NEW
-        JSONObject refundMeta = new JSONObject();
-        JSONObject requestDetails = new JSONObject();
-        requestDetails.put("original_transaction_id", originalTransactionId);
-        requestDetails.put("requested_amount", refundAmount.toString());
-        requestDetails.put("reason", reason);
-        requestDetails.put("requester_id", requesterId);
-        requestDetails.put("requested_at", LocalDateTime.now().toString());
-
-        refundMeta.put("refund_request", requestDetails);
-        this.refundMetadata = refundMeta.toString();
-    }
-
-    /**
-     * METHOD 5: For REFUND APPROVAL action
-     * Called when admin approves/rejects refund
-     */
-    public void setRefundApprovalFields(boolean isApproved, String approverId,
-                                        String comments, String reference) {
-        this.refundApproverId = approverId;
-        this.refundApprovedBy = approverId;
-        this.approvalComments = comments;
-        this.approvalReference = reference;
-        this.refundApprovedAt = LocalDateTime.now();
-        this.updatedUid = getCurrentUserId();
-        this.updatedAt = LocalDateTime.now();
-
-        if (isApproved) {
-            this.refundApprovalStatus = RefundApprovalStatus.APPROVED;
-            this.refundStatus = RefundStatus.PENDING;
-        } else {
-            this.refundApprovalStatus = RefundApprovalStatus.REJECTED;
-            this.status = TransactionStatus.FAILED;
+    public BigDecimal getRemainingRefundableAmount() {
+        if (refundAmount == null) {
+            return orderAmount;
         }
-
-        // Update refund metadata - MERGE with existing
-        JSONObject refundMeta = this.refundMetadata != null ?
-                new JSONObject(this.refundMetadata) : new JSONObject();
-
-        JSONObject approvalDetails = new JSONObject();
-        approvalDetails.put("approver_id", approverId);
-        approvalDetails.put("is_approved", isApproved);
-        approvalDetails.put("comments", comments);
-        approvalDetails.put("reference", reference);
-        approvalDetails.put("approved_at", LocalDateTime.now().toString());
-
-        refundMeta.put("refund_approval", approvalDetails);
-        this.refundMetadata = refundMeta.toString();
+        return orderAmount.subtract(refundAmount);
     }
 
-    /**
-     * METHOD 6: For REFUND PROCESSING action
-     * Called when refund is processed with Razorpay
-     */
-    public void setRefundProcessingFields(String razorpayRefundId, JSONObject razorpayResponse) {
-        this.razorpayRefundId = razorpayRefundId;
-        this.refundStatus = RefundStatus.PROCESSED;
-        this.refundApprovalStatus = RefundApprovalStatus.APPROVED;
-        this.status = TransactionStatus.CAPTURED;
-        this.refundProcessedAt = LocalDateTime.now();
-        this.updatedUid = getCurrentUserId();
-        this.updatedAt = LocalDateTime.now();
-
-        // Update refund metadata - MERGE with existing
-        JSONObject refundMeta = this.refundMetadata != null ?
-                new JSONObject(this.refundMetadata) : new JSONObject();
-
-        JSONObject processingDetails = new JSONObject();
-        processingDetails.put("razorpay_refund_id", razorpayRefundId);
-        processingDetails.put("razorpay_response", razorpayResponse);
-        processingDetails.put("processed_at", LocalDateTime.now().toString());
-
-        refundMeta.put("refund_processing", processingDetails);
-        this.refundMetadata = refundMeta.toString();
+    public boolean isPartiallyRefunded() {
+        return refundAmount != null &&
+                refundAmount.compareTo(BigDecimal.ZERO) > 0 &&
+                refundAmount.compareTo(orderAmount) < 0;
     }
 
-    /**
-     * METHOD 7: For PAYMENT FAILURE action
-     * Called when payment fails
-     */
-    public void setPaymentFailureFields(String failureReason, JSONObject failureDetails) {
-        this.status = TransactionStatus.FAILED;
-        this.updatedUid = getCurrentUserId();
-        this.updatedAt = LocalDateTime.now();
-
-        // Update payment metadata - MERGE with existing
-        JSONObject paymentMeta = this.paymentMetadata != null ?
-                new JSONObject(this.paymentMetadata) : new JSONObject();
-
-        JSONObject failureInfo = new JSONObject();
-        failureInfo.put("failed_at", LocalDateTime.now().toString());
-        failureInfo.put("failure_reason", failureReason);
-        failureInfo.put("failure_details", failureDetails);
-
-        paymentMeta.put("payment_failure", failureInfo);
-        this.paymentMetadata = paymentMeta.toString();
+    public boolean isFullyRefunded() {
+        return refundAmount != null &&
+                refundAmount.compareTo(orderAmount) >= 0;
     }
 
-    /**
-     * HELPER: Merge JSON objects properly
-     */
-    private JSONObject mergeJson(JSONObject existing, String key, JSONObject newData) {
-        if (existing.has(key)) {
-            // Merge existing and new data
-            JSONObject existingData = existing.getJSONObject(key);
-            for (String newKey : newData.keySet()) {
-                existingData.put(newKey, newData.get(newKey));
-            }
-            existing.put(key, existingData);
-        } else {
-            // Add new data
-            existing.put(key, newData);
+    // Update refund details
+    public void addRefund(BigDecimal amount, String cfRefundId, String refundId) {
+        if (this.refundAmount == null) {
+            this.refundAmount = BigDecimal.ZERO;
         }
-        return existing;
+        this.refundAmount = this.refundAmount.add(amount);
+        this.cfRefundId = cfRefundId;
+        this.refundId = refundId;
+        this.refundStatus = RefundStatus.PENDING;
+        this.refundCreatedAt = LocalDateTime.now();
     }
 
-    /**
-     * HELPER: Add history entry to refund metadata
-     */
-    public void addRefundHistory(String action, String userId, String notes) {
-        if (this.refundMetadata == null) {
-            this.refundMetadata = new JSONObject().toString();
-        }
-
-        JSONObject refundMeta = new JSONObject(this.refundMetadata);
-        if (!refundMeta.has("history")) {
-            refundMeta.put("history", new org.json.JSONArray());
-        }
-
-        org.json.JSONArray history = refundMeta.getJSONArray("history");
-        JSONObject historyEntry = new JSONObject();
-        historyEntry.put("action", action);
-        historyEntry.put("user_id", userId);
-        historyEntry.put("timestamp", LocalDateTime.now().toString());
-        historyEntry.put("notes", notes);
-
-        history.put(historyEntry);
-        refundMeta.put("history", history);
-        this.refundMetadata = refundMeta.toString();
-    }
-
-    /**
-     * HELPER: Get order metadata as JSONObject
-     */
-    public JSONObject getOrderMetadataJson() {
-        return this.orderMetadata != null ? new JSONObject(this.orderMetadata) : new JSONObject();
-    }
-
-    /**
-     * HELPER: Get payment metadata as JSONObject
-     */
-    public JSONObject getPaymentMetadataJson() {
-        return this.paymentMetadata != null ? new JSONObject(this.paymentMetadata) : new JSONObject();
-    }
-
-    /**
-     * HELPER: Get refund metadata as JSONObject
-     */
-    public JSONObject getRefundMetadataJson() {
-        return this.refundMetadata != null ? new JSONObject(this.refundMetadata) : new JSONObject();
-    }
-
-    /**
-     * HELPER: Update specific field in metadata
-     */
-    public void updateOrderMetadataField(String field, Object value) {
-        JSONObject orderMeta = getOrderMetadataJson();
-        orderMeta.put(field, value);
-        this.orderMetadata = orderMeta.toString();
-    }
-
-    public void updatePaymentMetadataField(String field, Object value) {
-        JSONObject paymentMeta = getPaymentMetadataJson();
-        paymentMeta.put(field, value);
-        this.paymentMetadata = paymentMeta.toString();
-    }
-
-    public void updateRefundMetadataField(String field, Object value) {
-        JSONObject refundMeta = getRefundMetadataJson();
-        refundMeta.put(field, value);
-        this.refundMetadata = refundMeta.toString();
+    // Update payment success
+    public void markPaymentSuccess(String cfPaymentId, BigDecimal amount, String paymentMethod) {
+        this.paymentStatus = PaymentStatus.SUCCESS;
+        this.cfPaymentId = cfPaymentId;
+        this.paymentAmount = amount;
+        this.paymentMethod = paymentMethod;
+        this.paymentProcessedAt = LocalDateTime.now();
+        this.orderStatus = OrderStatus.PAID;
     }
 }

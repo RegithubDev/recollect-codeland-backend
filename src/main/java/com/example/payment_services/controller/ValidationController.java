@@ -29,7 +29,7 @@ public class ValidationController {
         return ResponseEntity.ok(result);
     }
 
-    @GetMapping("/bank-account/{referenceId}")
+    @GetMapping("/get/bank-account/{referenceId}")
     public ResponseEntity<BankAccountVerificationResponseDTO> getBankAccountVerification(
             @PathVariable Long referenceId) {
 
@@ -55,7 +55,7 @@ public class ValidationController {
         return ResponseEntity.ok(result);
     }
 
-    @GetMapping("/pan/{referenceId}")
+    @GetMapping("/get/pan/{referenceId}")
     public ResponseEntity<PanVerificationResponseDTO> getPanVerification(
             @PathVariable Long referenceId) {
 
@@ -69,7 +69,7 @@ public class ValidationController {
 
     // ========== HEALTH CHECK ==========
 
-    @GetMapping("/health")
+    @GetMapping("/health/check")
     public ResponseEntity<?> healthCheck() {
         return ResponseEntity.ok().body(
                 new HealthResponse("UP", "Verification API",

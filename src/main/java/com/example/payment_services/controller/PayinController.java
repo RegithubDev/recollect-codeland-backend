@@ -8,11 +8,12 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/payins")
+@RequestMapping("/api/payin")
 @RequiredArgsConstructor
 @Slf4j
 public class PayinController {
@@ -20,7 +21,7 @@ public class PayinController {
     private final PayinService payinService;
 
     // 1. Create Order
-    @PostMapping("/orders")
+    @PostMapping("/create/orders")
     public ResponseEntity<PayinOrderResponseDTO> createOrder(
             @RequestBody PayinOrderRequestDTO request) {
 
@@ -30,12 +31,15 @@ public class PayinController {
     }
 
     // 2. Get Order
-    @GetMapping("/orders/{orderId}")
+    @GetMapping("/get/order/{orderId}")
     public ResponseEntity<PayinOrderResponseDTO> getOrder(
-            @PathVariable String orderId) {
+            @PathVariable String orderId,
+            @PathVariable String cfPaymentId,
+            @PathVariable BigDecimal amount,
+            @PathVariable String paymentMethod){
 
         log.info("Getting order: {}", orderId);
-        PayinOrderResponseDTO order = payinService.getOrderDetails(orderId);
+        PayinOrderResponseDTO order = payinService.getOrderDetails(orderId,cfPaymentId,amount, paymentMethod);
         return ResponseEntity.ok(order);
     }
 
@@ -49,18 +53,18 @@ public class PayinController {
 //        return ResponseEntity.ok(response);
 //    }
 
-    // 4. Get Extended Order
-    @GetMapping("/orders/{orderId}/extended")
-    public ResponseEntity<PayinExtendedOrderResponseDTO> getExtendedOrder(
-            @PathVariable String orderId) {
-
-        log.info("Getting extended order: {}", orderId);
-        PayinExtendedOrderResponseDTO order = payinService.getExtendedOrderDetails(orderId);
-        return ResponseEntity.ok(order);
-    }
+//    // 4. Get Extended Order
+//    @GetMapping("/update/orders/{orderId}")
+//    public ResponseEntity<PayinExtendedOrderResponseDTO> getExtendedOrder(
+//            @PathVariable String orderId) {
+//
+//        log.info("Getting extended order: {}", orderId);
+//        PayinExtendedOrderResponseDTO order = payinService.getExtendedOrderDetails(orderId);
+//        return ResponseEntity.ok(order);
+//    }
 
     // 5. Health Check
-    @GetMapping("/health")
+    @GetMapping("/health/check")
     public ResponseEntity<Map<String, String>> healthCheck() {
         Map<String, String> response = new HashMap<>();
         response.put("status", "UP");
