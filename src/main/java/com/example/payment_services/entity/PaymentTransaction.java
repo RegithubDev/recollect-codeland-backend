@@ -32,6 +32,12 @@ public class PaymentTransaction {
     @Column(name = "order_amount", precision = 12, scale = 2)
     private BigDecimal orderAmount;
 
+    @Column(name = "wallet_amount", precision = 12, scale = 2)
+    private BigDecimal walletAmount;
+
+    @Column(name = "real_amount", precision = 12, scale = 2)
+    private BigDecimal realAmount;
+
     @Column(name = "order_currency")
     private String orderCurrency = "INR";
 
