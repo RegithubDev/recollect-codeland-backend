@@ -81,3 +81,4 @@ public class GeneralLedger {
         DEBIT, CREDIT
     }
 }
+

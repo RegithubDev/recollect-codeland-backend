@@ -2,12 +2,16 @@
 package com.example.payment_services.repository;
 
 import com.example.payment_services.entity.GeneralLedger;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -35,4 +39,15 @@ public interface GeneralLedgerRepository extends JpaRepository<GeneralLedger, Lo
 
     // Get all transactions for account
     List<GeneralLedger> findByAccountId(String accountId);
+
+    @Query("SELECT COUNT(g) FROM GeneralLedger g WHERE g.customerId = :customerId " +
+            "AND g.accountId = :accountId AND g.entryDate >= :cutoffDate")
+    long countByCustomerIdAndAccountIdAndEntryDateAfter(
+            @Param("customerId") String customerId,
+            @Param("accountId") String accountId,
+            @Param("cutoffDate") LocalDate cutoffDate);
+
+    Page<GeneralLedger> findAll(Specification<GeneralLedger> spec, Pageable pageable);
+
+    List<GeneralLedger> findByTransactionId(String transactionId);
 }

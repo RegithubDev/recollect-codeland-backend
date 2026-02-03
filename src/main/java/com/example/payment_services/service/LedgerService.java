@@ -4,19 +4,25 @@ import com.example.payment_services.entity.ChartOfAccounts;
 import com.example.payment_services.entity.GeneralLedger;
 import com.example.payment_services.repository.ChartOfAccountsRepository;
 import com.example.payment_services.repository.GeneralLedgerRepository;
+import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
-    public class LedgerService {
+public class LedgerService {
 
     private final GeneralLedgerRepository generalLedgerRepository;
     private final ChartOfAccountsRepository chartOfAccountsRepository;
@@ -53,7 +59,6 @@ import java.util.UUID;
         entry.setDescription(account.getDescription());
 
         entry.setEntryType(entryType);
-        entry.setDescription(account.getDescription());
         entry.setCreatedUid(userId);
         entry.setUpdatedUid(userId);
 
@@ -119,7 +124,7 @@ import java.util.UUID;
         // Debit: Reduce revenue
         GeneralLedger debitEntry = createLedgerEntry(
                 salesRevenue, paymentTransactionId, transactionId,
-                customerId, orderId, amount, GeneralLedger.EntryType.DEBIT,userId);
+                customerId, orderId, amount, GeneralLedger.EntryType.DEBIT, userId);
 
         // Credit: Move to pending
         GeneralLedger creditEntry = createLedgerEntry(
@@ -248,7 +253,7 @@ import java.util.UUID;
         // Debit: Reduce wallet liability
         GeneralLedger debitEntry = createLedgerEntry(
                 walletLiability, paymentTransactionId, transactionId,
-                customerId, orderId, amount, GeneralLedger.EntryType.DEBIT,userId);
+                customerId, orderId, amount, GeneralLedger.EntryType.DEBIT, userId);
 
         // Credit: Move to pending
         GeneralLedger creditEntry = createLedgerEntry(
@@ -331,7 +336,7 @@ import java.util.UUID;
      * Get customer wallet balance
      * Formula: Sum(CREDIT to 3001) - Sum(DEBIT from 3001)
      */
-    @Transactional
+    @Transactional(readOnly = true)
     public BigDecimal getCustomerWalletBalance(String customerId) {
         BigDecimal totalCredits = generalLedgerRepository
                 .sumAmountByCustomerAndAccountAndEntryType(customerId, "3001", GeneralLedger.EntryType.CREDIT)
@@ -347,6 +352,7 @@ import java.util.UUID;
     /**
      * Get company bank balance
      */
+    @Transactional(readOnly = true)
     public BigDecimal getCompanyBankBalance() {
         BigDecimal totalDebits = generalLedgerRepository
                 .sumAmountByAccountAndEntryType("1001", GeneralLedger.EntryType.DEBIT)
@@ -362,6 +368,7 @@ import java.util.UUID;
     /**
      * Get total sales revenue
      */
+    @Transactional(readOnly = true)
     public BigDecimal getTotalSalesRevenue() {
         BigDecimal totalCredits = generalLedgerRepository
                 .sumAmountByAccountAndEntryType("5001", GeneralLedger.EntryType.CREDIT)
@@ -372,5 +379,131 @@ import java.util.UUID;
                 .orElse(BigDecimal.ZERO);
 
         return totalCredits.subtract(totalDebits); // Income: Credits - Debits
+    }
+
+    // ============ NEW METHODS FOR WALLET TRANSACTIONS ============
+
+    /**
+     * Get wallet transactions for a specific user
+     */
+    @Transactional(readOnly = true)
+    public Page<GeneralLedger> getWalletTransactionsByUser(
+            String userId, Pageable pageable, LocalDate startDate,
+            LocalDate endDate, GeneralLedger.EntryType entryType, String transactionType) {
+
+        // Create specification for filtering
+        Specification<GeneralLedger> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+
+            // Filter by wallet liability account (3001) and customerId
+            predicates.add(cb.equal(root.get("accountId"), "3001"));
+            predicates.add(cb.equal(root.get("customerId"), userId));
+
+            if (startDate != null) {
+                predicates.add(cb.greaterThanOrEqualTo(root.get("entryDate"), startDate));
+            }
+            if (endDate != null) {
+                predicates.add(cb.lessThanOrEqualTo(root.get("entryDate"), endDate));
+            }
+            if (entryType != null) {
+                predicates.add(cb.equal(root.get("entryType"), entryType));
+            }
+            if (transactionType != null && !transactionType.isEmpty()) {
+                predicates.add(cb.like(cb.lower(root.get("transactionId")),
+                        "%" + transactionType.toLowerCase() + "%"));
+            }
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+
+        return generalLedgerRepository.findAll(spec, pageable);
+    }
+
+    /**
+     * Get all ledger entries with filters
+     */
+    @Transactional(readOnly = true)
+    public Page<GeneralLedger> getAllLedgerEntries(
+            Pageable pageable, String accountId, String customerId,
+            String transactionId, GeneralLedger.EntryType entryType,
+            LocalDate startDate, LocalDate endDate) {
+
+        // Create specification for filtering
+        Specification<GeneralLedger> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+
+            if (accountId != null && !accountId.isEmpty()) {
+                predicates.add(cb.equal(root.get("accountId"), accountId));
+            }
+            if (customerId != null && !customerId.isEmpty()) {
+                predicates.add(cb.equal(root.get("customerId"), customerId));
+            }
+            if (transactionId != null && !transactionId.isEmpty()) {
+                predicates.add(cb.like(cb.lower(root.get("transactionId")),
+                        "%" + transactionId.toLowerCase() + "%"));
+            }
+            if (entryType != null) {
+                predicates.add(cb.equal(root.get("entryType"), entryType));
+            }
+            if (startDate != null) {
+                predicates.add(cb.greaterThanOrEqualTo(root.get("entryDate"), startDate));
+            }
+            if (endDate != null) {
+                predicates.add(cb.lessThanOrEqualTo(root.get("entryDate"), endDate));
+            }
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+
+        return generalLedgerRepository.findAll(spec, pageable);
+    }
+
+    /**
+     * Get recent transactions count for a user
+     */
+    @Transactional(readOnly = true)
+    public long getRecentTransactionsCount(String userId, int days) {
+        LocalDate cutoffDate = LocalDate.now().minusDays(days);
+        return generalLedgerRepository.countByCustomerIdAndAccountIdAndEntryDateAfter(
+                userId, "3001", cutoffDate);
+    }
+
+    /**
+     * Get total credits for a user
+     */
+    @Transactional(readOnly = true)
+    public BigDecimal getTotalCreditsForUser(String userId) {
+        return generalLedgerRepository
+                .sumAmountByCustomerAndAccountAndEntryType(
+                        userId, "3001", GeneralLedger.EntryType.CREDIT)
+                .orElse(BigDecimal.ZERO);
+    }
+
+    /**
+     * Get total debits for a user
+     */
+    @Transactional(readOnly = true)
+    public BigDecimal getTotalDebitsForUser(String userId) {
+        return generalLedgerRepository
+                .sumAmountByCustomerAndAccountAndEntryType(
+                        userId, "3001", GeneralLedger.EntryType.DEBIT)
+                .orElse(BigDecimal.ZERO);
+    }
+
+    /**
+     * Get ledger entry by ID
+     */
+    @Transactional(readOnly = true)
+    public GeneralLedger getLedgerEntryById(String ledgerEntryId) {
+        return generalLedgerRepository.findById(Long.valueOf(ledgerEntryId))
+                .orElseThrow(() -> new RuntimeException("Ledger entry not found: " + ledgerEntryId));
+    }
+
+    /**
+     * Get ledger entries by transaction ID
+     */
+    @Transactional(readOnly = true)
+    public List<GeneralLedger> getLedgerEntriesByTransactionId(String transactionId) {
+        return generalLedgerRepository.findByTransactionId(transactionId);
     }
 }

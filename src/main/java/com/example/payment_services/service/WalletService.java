@@ -2,12 +2,16 @@ package com.example.payment_services.service;
 
 import com.example.payment_services.dto.wallet.PayoutResponseDTO;
 import com.example.payment_services.dto.wallet.WalletWithdrawal;
+import com.example.payment_services.entity.GeneralLedger;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 
+import java.awt.print.Pageable;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 
 import static com.example.payment_services.util.SecurityUtil.getCurrentUserId;
 
@@ -35,5 +39,41 @@ public class WalletService {
     @Transactional
     public BigDecimal getWalletBalance(String userID) {
         return ledgerService.getCustomerWalletBalance(userID);
+    }
+
+    @Transactional
+    public Page<GeneralLedger> getWalletTransactions(
+            String userId, Pageable pageable, LocalDate startDate,
+            LocalDate endDate, GeneralLedger.EntryType entryType, String transactionType) {
+
+        // Delegate to ledger service
+        return ledgerService.getWalletTransactionsByUser(
+                userId, (org.springframework.data.domain.Pageable) pageable, startDate, endDate, entryType, transactionType);
+    }
+
+    @Transactional
+    public Page<GeneralLedger> getAllLedgerEntries(
+            Pageable pageable, String accountId, String customerId,
+            String transactionId, GeneralLedger.EntryType entryType,
+            LocalDate startDate, LocalDate endDate) {
+
+        return ledgerService.getAllLedgerEntries(
+                (org.springframework.data.domain.Pageable) pageable, accountId, customerId, transactionId,
+                entryType, startDate, endDate);
+    }
+
+    @Transactional
+    public long getRecentTransactionsCount(String userId, int days) {
+        return ledgerService.getRecentTransactionsCount(userId, days);
+    }
+
+    @Transactional
+    public BigDecimal getTotalCredits(String userId) {
+        return ledgerService.getTotalCreditsForUser(userId);
+    }
+
+    @Transactional
+    public BigDecimal getTotalDebits(String userId) {
+        return ledgerService.getTotalDebitsForUser(userId);
     }
 }
