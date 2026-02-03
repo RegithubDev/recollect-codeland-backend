@@ -16,10 +16,10 @@ public class PayinOrderRequestDTO {
     private Double orderAmount;
 
     @JsonProperty("wallet_amount")
-    private BigDecimal walletAmount;
+    private Double walletAmount;
 
     @JsonProperty("real_amount")
-    private BigDecimal realAmount;
+    private Double realAmount;
 
     @JsonProperty("customer_details")
     private CustomerDetails customerDetails;
