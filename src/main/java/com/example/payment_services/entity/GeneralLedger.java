@@ -64,9 +64,6 @@ public class GeneralLedger {
     @Column(name = "account_type", nullable = false, length = 50)
     private String accountType; // Store as string
 
-    @Column(name = "normal_balance", nullable = false, length = 10)
-    private String normalBalance; // Store as string
-
     @Column(name = "ledger_type", nullable = false, length = 20)
     private String ledgerType; // Store as string
 
