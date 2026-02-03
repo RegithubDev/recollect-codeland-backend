@@ -212,11 +212,11 @@ public class LedgerService {
             String paymentTransactionId, String transactionId,
             String customerId, String orderId, BigDecimal amount, String userId) {
 
-        ChartOfAccounts payoutExpense = chartOfAccountsRepository.findById("4001")
-                .orElseThrow(() -> new RuntimeException("Account 4001  not found"));
+        ChartOfAccounts payoutExpense = chartOfAccountsRepository.findById("2001")
+                .orElseThrow(() -> new RuntimeException("Account 2001  not found"));
 
-        ChartOfAccounts walletLiability = chartOfAccountsRepository.findById("1001")
-                .orElseThrow(() -> new RuntimeException("Account 1001 not found"));
+        ChartOfAccounts walletLiability = chartOfAccountsRepository.findById("3001")
+                .orElseThrow(() -> new RuntimeException("Account 3001 not found"));
 
         // Debit: Increase expense
         GeneralLedger debitEntry = createLedgerEntry(

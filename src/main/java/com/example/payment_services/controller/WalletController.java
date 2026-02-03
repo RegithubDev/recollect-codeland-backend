@@ -15,13 +15,13 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.awt.print.Pageable;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Map;
@@ -255,9 +255,9 @@ public class WalletController {
             // Create pageable with sorting
             Sort.Direction sortDirection = "DESC".equalsIgnoreCase(direction)
                     ? Sort.Direction.DESC : Sort.Direction.ASC;
-            Pageable pageable = (Pageable) PageRequest.of(page, size, Sort.by(sortDirection, sortBy));
+            Pageable pageable = PageRequest.of(page, size, Sort.by(sortDirection, sortBy));
 
-            // Call service method (you'll need to implement this in WalletService/LedgerService)
+            // Call service method - NO CAST NEEDED
             Page<GeneralLedger> transactions = walletService.getWalletTransactions(
                     userId, pageable, startDate, endDate, entryType, transactionType);
 
@@ -333,9 +333,9 @@ public class WalletController {
             // Create pageable with sorting
             Sort.Direction sortDirection = "DESC".equalsIgnoreCase(direction)
                     ? Sort.Direction.DESC : Sort.Direction.ASC;
-            Pageable pageable = (Pageable) PageRequest.of(page, size, Sort.by(sortDirection, sortBy));
+            Pageable pageable = PageRequest.of(page, size, Sort.by(sortDirection, sortBy));
 
-            // Call service method (you'll need to implement this in LedgerService)
+            // Call service method - NO CAST NEEDED
             Page<GeneralLedger> ledgerEntries = walletService.getAllLedgerEntries(
                     pageable, accountId, customerId, transactionId, entryType, startDate, endDate);
 
@@ -378,7 +378,7 @@ public class WalletController {
             // Get recent transactions count (last 30 days)
             long recentTransactions = walletService.getRecentTransactionsCount(userId, 30);
 
-            // Get total credits and debits (you'll need to implement these)
+            // Get total credits and debits
             BigDecimal totalCredits = walletService.getTotalCredits(userId);
             BigDecimal totalDebits = walletService.getTotalDebits(userId);
 

@@ -7,9 +7,9 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
-import java.awt.print.Pageable;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
@@ -24,15 +24,27 @@ public class WalletService {
 
     @Transactional
     public PayoutResponseDTO payoutToWallet(PayoutResponseDTO request) {
-        ledgerService.recordWalletPayout(request.getReferenceId(), request.getFundAccountId(),request.getCustomerId(),
-                request.getContactId(),request.getAmount(), getCurrentUserId());
+        ledgerService.recordWalletPayout(
+                request.getReferenceId(),
+                request.getFundAccountId(),
+                request.getCustomerId(),
+                request.getContactId(),
+                request.getAmount(),
+                getCurrentUserId()
+        );
         return request;
     }
 
     @Transactional
     public WalletWithdrawal walletWithdrawalApproved(WalletWithdrawal request) {
-        ledgerService.recordWithdrawalApproved(request.getReferenceId(), request.getFundAccountId(),request.getCustomerId(),
-                request.getContactId(),request.getAmount(), getCurrentUserId());
+        ledgerService.recordWithdrawalApproved(
+                request.getReferenceId(),
+                request.getFundAccountId(),
+                request.getCustomerId(),
+                request.getContactId(),
+                request.getAmount(),
+                getCurrentUserId()
+        );
         return request;
     }
 
@@ -46,9 +58,8 @@ public class WalletService {
             String userId, Pageable pageable, LocalDate startDate,
             LocalDate endDate, GeneralLedger.EntryType entryType, String transactionType) {
 
-        // Delegate to ledger service
         return ledgerService.getWalletTransactionsByUser(
-                userId, (org.springframework.data.domain.Pageable) pageable, startDate, endDate, entryType, transactionType);
+                userId, pageable, startDate, endDate, entryType, transactionType);
     }
 
     @Transactional
@@ -58,8 +69,7 @@ public class WalletService {
             LocalDate startDate, LocalDate endDate) {
 
         return ledgerService.getAllLedgerEntries(
-                (org.springframework.data.domain.Pageable) pageable, accountId, customerId, transactionId,
-                entryType, startDate, endDate);
+                pageable, accountId, customerId, transactionId, entryType, startDate, endDate);
     }
 
     @Transactional
