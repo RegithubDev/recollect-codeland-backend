@@ -1,5 +1,6 @@
 package com.example.payment_services.controller;
 
+import com.example.payment_services.dto.wallet.AddToWalletRequest;
 import com.example.payment_services.dto.wallet.PayoutResponseDTO;
 import com.example.payment_services.dto.wallet.WalletWithdrawal;
 import com.example.payment_services.entity.GeneralLedger;
@@ -136,6 +137,58 @@ public class WalletController {
                     .body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
             log.error("Error wallet withdrawal approval process", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Internal server error"));
+        }
+    }
+
+    @Operation(
+            summary = "Add Money to Wallet",
+            description = "Adds money to user's wallet balance (credit)"
+    )
+    @ApiResponses(value = {
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Money added to wallet successfully",
+                    content = @Content(schema = @Schema(implementation = Map.class))
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Invalid request or insufficient funds",
+                    content = @Content(schema = @Schema(implementation = Map.class))
+            )
+    })
+    @PostMapping("/add/to/wallet")
+    public ResponseEntity<?> addToWallet(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "Add money to wallet request",
+                    required = true
+            )
+            @RequestBody AddToWalletRequest request) {
+        try {
+            log.info("Add money to wallet request: {}", request);
+
+            // Create a PayoutResponseDTO from AddToWalletRequest
+            PayoutResponseDTO payoutRequest = new PayoutResponseDTO();
+            payoutRequest.setReferenceId(request.getReferenceId());
+            payoutRequest.setFundAccountId(request.getUserId()); // Or use appropriate mapping
+            payoutRequest.setCustomerId(request.getUserId());
+            payoutRequest.setContactId(request.getUserId());
+            payoutRequest.setAmount(request.getAmount());
+
+            PayoutResponseDTO result = walletService.payoutToWallet(payoutRequest);
+            return ResponseEntity.ok(Map.of(
+                    "message", "Money added to wallet successfully",
+                    "amount", request.getAmount(),
+                    "userId", request.getUserId(),
+                    "transactionId", result.getReferenceId()
+            ));
+        } catch (RuntimeException e) {
+            log.warn("Add to wallet failed: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error adding money to wallet", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Internal server error"));
         }
