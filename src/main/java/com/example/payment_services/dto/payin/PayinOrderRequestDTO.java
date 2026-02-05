@@ -24,6 +24,9 @@ public class PayinOrderRequestDTO {
     @JsonProperty("customer_details")
     private CustomerDetails customerDetails;
 
+    @JsonProperty("order_meta")
+    private OrderMeta orderMeta;
+
     @JsonProperty("order_note")
     private String orderNote;
 
@@ -43,5 +46,10 @@ public class PayinOrderRequestDTO {
 
         @JsonProperty("customer_email")
         private String customerEmail;
+    }
+    @Data
+    public static class OrderMeta {
+        @JsonProperty("payment_methods")
+        private String paymentMethods;
     }
 }
