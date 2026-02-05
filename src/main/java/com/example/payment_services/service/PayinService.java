@@ -2,13 +2,16 @@ package com.example.payment_services.service;
 
 import com.example.payment_services.dto.payin.*;
 import com.example.payment_services.entity.PaymentTransaction;
+import com.example.payment_services.repository.PaymentTransactionRepository;
 import com.example.payment_services.service.http.CashfreePayinHttpService;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.text.DecimalFormat;
+import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
@@ -17,6 +20,7 @@ public class PayinService {
 
     private final CashfreePayinHttpService cashfreePayinHttpService;
     private final PaymentDataService paymentDataService;
+    private final PaymentTransactionRepository paymentTransactionRepository;
 
     public PayinOrderResponseDTO createPaymentOrder(PayinOrderRequestDTO request) {
         try {
@@ -90,5 +94,125 @@ public class PayinService {
             log.error("Get extended order error", e);
             throw new RuntimeException("Get extended order failed: " + e.getMessage());
         }
+    }
+
+    @Transactional
+    public PaymentTransaction updatePaymentStatus(PaymentStatusUpdateDTO request) {
+        try {
+            log.info("Updating payment status: Order={}, Status={}, Amount={}",
+                    request.getOrderId(), request.getPaymentStatus(), request.getAmount());
+
+            // 1. Get order from database
+            PaymentTransaction transaction = paymentTransactionRepository.findByOrderId(request.getOrderId())
+                    .orElseThrow(() -> new RuntimeException("Order not found: " + request.getOrderId()));
+
+            // 2. Check if payment is already processed
+            if (transaction.getPaymentStatus() == PaymentTransaction.PaymentStatus.SUCCESS) {
+                throw new RuntimeException("Payment already processed for order: " + request.getOrderId());
+            }
+
+            // 3. Validate with Cashfree API
+            PayinOrderResponseDTO cashfreeOrder = cashfreePayinHttpService.getOrder(request.getOrderId());
+
+            // 4. Verify order details match
+            validatePaymentDetails(transaction, cashfreeOrder, request);
+
+            // 5. Update payment status in database
+            updateTransactionWithPayment(transaction, request);
+
+            // 6. Save updated transaction
+            PaymentTransaction savedTransaction = paymentTransactionRepository.save(transaction);
+
+            log.info("Payment status updated successfully: Order={}, NewStatus={}, CfPaymentId={}",
+                    request.getOrderId(), request.getPaymentStatus(), request.getCfPaymentId());
+
+            return savedTransaction;
+
+        } catch (Exception e) {
+            log.error("Update payment status error", e);
+            throw new RuntimeException("Payment status update failed: " + e.getMessage());
+        }
+    }
+
+    private void validatePaymentDetails(PaymentTransaction transaction,
+                                        PayinOrderResponseDTO cashfreeOrder,
+                                        PaymentStatusUpdateDTO request) {
+        // Validate order exists in Cashfree
+        if (cashfreeOrder == null) {
+            throw new RuntimeException("Order not found in Cashfree: " + request.getOrderId());
+        }
+
+        // Validate order IDs match
+        if (!request.getOrderId().equals(cashfreeOrder.getOrderId())) {
+            throw new RuntimeException("Order ID mismatch between request and Cashfree");
+        }
+
+        // Validate order IDs match our database
+        if (!request.getOrderId().equals(transaction.getOrderId())) {
+            throw new RuntimeException("Order ID mismatch between request and database");
+        }
+
+        // Validate amount matches (with tolerance for minor differences)
+        BigDecimal requestedAmount = request.getAmount();
+        BigDecimal cashfreeAmount = BigDecimal.valueOf(cashfreeOrder.getOrderAmount());
+        BigDecimal databaseAmount = transaction.getOrderAmount();
+
+        // Check if amounts match within reasonable tolerance (e.g., 1 paisa)
+        BigDecimal tolerance = new BigDecimal("0.01");
+
+        if (requestedAmount != null) {
+            BigDecimal diffWithCashfree = requestedAmount.subtract(cashfreeAmount).abs();
+            BigDecimal diffWithDatabase = requestedAmount.subtract(databaseAmount).abs();
+
+            if (diffWithCashfree.compareTo(tolerance) > 0) {
+                throw new RuntimeException(String.format(
+                        "Amount mismatch with Cashfree. Requested: %s, Cashfree: %s",
+                        requestedAmount, cashfreeAmount));
+            }
+
+            if (diffWithDatabase.compareTo(tolerance) > 0) {
+                throw new RuntimeException(String.format(
+                        "Amount mismatch with database. Requested: %s, Database: %s",
+                        requestedAmount, databaseAmount));
+            }
+        }
+
+        // Validate order status from Cashfree
+        String cashfreeStatus = cashfreeOrder.getOrderStatus();
+        if (!"PAID".equalsIgnoreCase(cashfreeStatus) && !"ACTIVE".equalsIgnoreCase(cashfreeStatus)) {
+            log.warn("Cashfree order status is not PAID or ACTIVE: {}", cashfreeStatus);
+        }
+    }
+
+    private void updateTransactionWithPayment(PaymentTransaction transaction, PaymentStatusUpdateDTO request) {
+        // Update payment status
+        PaymentTransaction.PaymentStatus paymentStatus =
+                PaymentTransaction.PaymentStatus.valueOf(request.getPaymentStatus().toUpperCase());
+        transaction.setPaymentStatus(paymentStatus);
+
+        // Update order status based on payment status
+        if (paymentStatus == PaymentTransaction.PaymentStatus.SUCCESS) {
+            transaction.setOrderStatus(PaymentTransaction.OrderStatus.PAID);
+        } else if (paymentStatus == PaymentTransaction.PaymentStatus.FAILED) {
+            transaction.setOrderStatus(PaymentTransaction.OrderStatus.FAILED);
+        }
+
+        // Update payment details
+        transaction.setCfPaymentId(request.getCfPaymentId());
+        transaction.setPaymentAmount(request.getAmount());
+        transaction.setPaymentMethod(request.getPaymentMethod());
+        transaction.setPaymentGateway(request.getPaymentGateway());
+        transaction.setBankReference(request.getBankReference());
+        transaction.setUtr(request.getUtr());
+        transaction.setAuthCode(request.getAuthCode());
+        transaction.setPaymentProcessedAt(request.getPaymentTime() != null ?
+                request.getPaymentTime() : LocalDateTime.now());
+
+        // Update attempt count
+        transaction.setAttemptCount(transaction.getAttemptCount() != null ?
+                transaction.getAttemptCount() + 1 : 1);
+
+        // Mark callback received
+        transaction.setCallbackReceived(true);
     }
 }

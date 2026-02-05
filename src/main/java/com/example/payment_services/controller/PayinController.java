@@ -115,6 +115,57 @@ public class PayinController {
 //    }
 
     @Operation(
+            summary = "Update Payment Status",
+            description = "Updates payment status after checkout completion. Validates with Cashfree before updating."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Payment status updated successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid request or status mismatch"),
+            @ApiResponse(responseCode = "404", description = "Order not found"),
+            @ApiResponse(responseCode = "409", description = "Payment already processed")
+    })
+    @PostMapping("/update/payment-status")
+    public ResponseEntity<?> updatePaymentStatus(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "Payment status update request with validation",
+                    required = true
+            )
+            @RequestBody PaymentStatusUpdateDTO request) {
+
+        try {
+            log.info("Updating payment status for order: {}, status: {}",
+                    request.getOrderId(), request.getPaymentStatus());
+
+            // Validate request
+            if (request.getOrderId() == null || request.getPaymentStatus() == null) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(Map.of("error", "Order ID and payment status are required"));
+            }
+
+            // Update payment status with validation
+            PaymentTransaction updatedTransaction = payinService.updatePaymentStatus(request);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Payment status updated successfully",
+                    "orderId", request.getOrderId(),
+                    "paymentStatus", request.getPaymentStatus(),
+                    "cfPaymentId", updatedTransaction.getCfPaymentId(),
+                    "updatedAt", updatedTransaction.getUpdatedAt()
+            ));
+
+        } catch (RuntimeException e) {
+            log.warn("Payment status update failed: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error updating payment status", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Internal server error"));
+        }
+    }
+
+    @Operation(
             summary = "Service Health Check",
             description = "Checks the health and availability of the PayIn service"
     )
