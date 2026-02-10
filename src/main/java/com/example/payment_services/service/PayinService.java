@@ -13,6 +13,9 @@ import java.math.BigDecimal;
 import java.text.DecimalFormat;
 import java.time.LocalDateTime;
 
+import static com.example.payment_services.util.SecurityUtil.getCurrentUser;
+import static com.example.payment_services.util.SecurityUtil.getCurrentUserId;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -21,6 +24,7 @@ public class PayinService {
     private final CashfreePayinHttpService cashfreePayinHttpService;
     private final PaymentDataService paymentDataService;
     private final PaymentTransactionRepository paymentTransactionRepository;
+    private final LedgerService ledgerService;
 
     public PayinOrderResponseDTO createPaymentOrder(PayinOrderRequestDTO request) {
         try {
@@ -33,9 +37,11 @@ public class PayinService {
                     request.getCustomerDetails().getCustomerId() == null) {
                 throw new IllegalArgumentException("Customer details are required");
             }
-
             PayinOrderResponseDTO response = cashfreePayinHttpService.createOrder(request);
-
+            if (request.getWalletAmount()> 0){
+                ledgerService.deductionFromWallet(response.getCfOrderId(),response.getCfOrderId(),
+                        response.getCustomerDetails().getCustomerId(),response.getOrderId(), BigDecimal.valueOf(request.getWalletAmount()), getCurrentUserId());
+            }
             log.info("Payment order created: orderId={}, cfOrderId={}",
                     response.getOrderId(), response.getCfOrderId());
             // save to database

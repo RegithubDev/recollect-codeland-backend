@@ -1,5 +1,6 @@
 package com.example.payment_services.service;
 
+import com.example.payment_services.constant.TransactionNarration;
 import com.example.payment_services.entity.ChartOfAccounts;
 import com.example.payment_services.entity.GeneralLedger;
 import com.example.payment_services.repository.ChartOfAccountsRepository;
@@ -40,7 +41,8 @@ public class LedgerService {
             String orderId,
             BigDecimal amount,
             GeneralLedger.EntryType entryType,
-            String userId) {
+            String userId,
+            String Description) {
 
         GeneralLedger entry = new GeneralLedger();
         entry.setLedgerEntryId(generateLedgerEntryId(entryType));
@@ -56,7 +58,7 @@ public class LedgerService {
         entry.setAccountName(account.getAccountName());
         entry.setAccountType(account.getAccountType().name());
         entry.setLedgerType(account.getTransactionType().name());
-        entry.setDescription(account.getDescription());
+        entry.setDescription(Description);
 
         entry.setEntryType(entryType);
         entry.setCreatedUid(userId);
@@ -76,7 +78,7 @@ public class LedgerService {
     /**
      * SCENARIO 1: Payment Success (Checkout completed)
      * 1001 (Asset) DEBIT = Bank balance increases
-     * 1002 (Clearing) CREDIT = Clear pending amount
+     * 5001 (Clearing) CREDIT = Clear pending amount
      */
     @Transactional
     public void recordPaymentSuccess(
@@ -86,18 +88,18 @@ public class LedgerService {
         ChartOfAccounts companyBank = chartOfAccountsRepository.findById("1001")
                 .orElseThrow(() -> new RuntimeException("Account 1001 not found"));
 
-        ChartOfAccounts clearingAccount = chartOfAccountsRepository.findById("1002")
-                .orElseThrow(() -> new RuntimeException("Account 1002 not found"));
+        ChartOfAccounts clearingAccount = chartOfAccountsRepository.findById("5001")
+                .orElseThrow(() -> new RuntimeException("Account 5001 not found"));
 
         // Debit: Bank balance increases
         GeneralLedger debitEntry = createLedgerEntry(
                 companyBank, paymentTransactionId, transactionId,
-                customerId, orderId, amount, GeneralLedger.EntryType.DEBIT, userId);
+                customerId, orderId, amount, GeneralLedger.EntryType.DEBIT, userId, TransactionNarration.PAY_IN_SUCCESS);
 
-        // Credit: Clear pending amount
+        // Credit: revenue increase
         GeneralLedger creditEntry = createLedgerEntry(
                 clearingAccount, paymentTransactionId, transactionId,
-                customerId, orderId, amount, GeneralLedger.EntryType.CREDIT, userId);
+                customerId, orderId, amount, GeneralLedger.EntryType.CREDIT, userId, TransactionNarration.PAY_IN_SUCCESS);
 
         generalLedgerRepository.save(debitEntry);
         generalLedgerRepository.save(creditEntry);
@@ -124,12 +126,12 @@ public class LedgerService {
         // Debit: Reduce revenue
         GeneralLedger debitEntry = createLedgerEntry(
                 salesRevenue, paymentTransactionId, transactionId,
-                customerId, orderId, amount, GeneralLedger.EntryType.DEBIT, userId);
+                customerId, orderId, amount, GeneralLedger.EntryType.DEBIT, userId, TransactionNarration.REFUND_INITIATED);
 
         // Credit: Move to pending
         GeneralLedger creditEntry = createLedgerEntry(
                 clearingAccount, paymentTransactionId, transactionId,
-                customerId, orderId, amount, GeneralLedger.EntryType.CREDIT, userId);
+                customerId, orderId, amount, GeneralLedger.EntryType.CREDIT, userId, TransactionNarration.REFUND_INITIATED);
 
         generalLedgerRepository.save(debitEntry);
         generalLedgerRepository.save(creditEntry);
@@ -139,29 +141,29 @@ public class LedgerService {
 
     /**
      * SCENARIO 3: Refund Processed Success
-     * 1005 (Clearing) DEBIT = Clear pending
-     * 1006 (Asset) CREDIT = Bank balance decreases
+     * 4001 (Clearing) DEBIT = Clear pending
+     * 1001 (Asset) CREDIT = Bank balance decreases
      */
     @Transactional
     public void recordRefundProcessedSuccess(
             String paymentTransactionId, String transactionId,
             String customerId, String orderId, BigDecimal amount, String userId) {
 
-        ChartOfAccounts clearingAccount = chartOfAccountsRepository.findById("1005")
-                .orElseThrow(() -> new RuntimeException("Account 1005 not found"));
+        ChartOfAccounts clearingAccount = chartOfAccountsRepository.findById("4001")
+                .orElseThrow(() -> new RuntimeException("Account 4001 not found"));
 
-        ChartOfAccounts companyBank = chartOfAccountsRepository.findById("1006")
-                .orElseThrow(() -> new RuntimeException("Account 1006 not found"));
+        ChartOfAccounts companyBank = chartOfAccountsRepository.findById("1001")
+                .orElseThrow(() -> new RuntimeException("Account 1001 not found"));
 
         // Debit: Clear pending
         GeneralLedger debitEntry = createLedgerEntry(
                 clearingAccount, paymentTransactionId, transactionId,
-                customerId, orderId, amount, GeneralLedger.EntryType.DEBIT, userId);
+                customerId, orderId, amount, GeneralLedger.EntryType.DEBIT, userId, TransactionNarration.REFUND_SUCCESS);
 
         // Credit: Bank balance decreases
         GeneralLedger creditEntry = createLedgerEntry(
                 companyBank, paymentTransactionId, transactionId,
-                customerId, orderId, amount, GeneralLedger.EntryType.CREDIT, userId);
+                customerId, orderId, amount, GeneralLedger.EntryType.CREDIT, userId, TransactionNarration.REFUND_SUCCESS);
 
         generalLedgerRepository.save(debitEntry);
         generalLedgerRepository.save(creditEntry);
@@ -171,29 +173,29 @@ public class LedgerService {
 
     /**
      * SCENARIO 4: Refund Failed
-     * 1007 (Clearing) DEBIT = Clear pending
-     * 1008 (Income) CREDIT = Increase in revenue
+     * 4001 (Clearing) DEBIT = Clear pending
+     * 5001 (Income) CREDIT = Increase in revenue
      */
     @Transactional
     public void recordRefundFailed(
             String paymentTransactionId, String transactionId,
             String customerId, String orderId, BigDecimal amount, String userId) {
 
-        ChartOfAccounts clearingAccount = chartOfAccountsRepository.findById("1007")
-                .orElseThrow(() -> new RuntimeException("Account 1007 not found"));
+        ChartOfAccounts clearingAccount = chartOfAccountsRepository.findById("4001")
+                .orElseThrow(() -> new RuntimeException("Account 4001 not found"));
 
-        ChartOfAccounts salesRevenue = chartOfAccountsRepository.findById("1008")
-                .orElseThrow(() -> new RuntimeException("Account 1008 not found"));
+        ChartOfAccounts salesRevenue = chartOfAccountsRepository.findById("5001")
+                .orElseThrow(() -> new RuntimeException("Account 5001 not found"));
 
         // Debit: Clear pending
         GeneralLedger debitEntry = createLedgerEntry(
                 clearingAccount, paymentTransactionId, transactionId,
-                customerId, orderId, amount, GeneralLedger.EntryType.DEBIT, userId);
+                customerId, orderId, amount, GeneralLedger.EntryType.DEBIT, userId, TransactionNarration.REFUND_FAILED);
 
         // Credit: Increase in revenue
         GeneralLedger creditEntry = createLedgerEntry(
                 salesRevenue, paymentTransactionId, transactionId,
-                customerId, orderId, amount, GeneralLedger.EntryType.CREDIT, userId);
+                customerId, orderId, amount, GeneralLedger.EntryType.CREDIT, userId, TransactionNarration.REFUND_FAILED);
 
         generalLedgerRepository.save(debitEntry);
         generalLedgerRepository.save(creditEntry);
@@ -221,12 +223,12 @@ public class LedgerService {
         // Debit: Increase expense
         GeneralLedger debitEntry = createLedgerEntry(
                 payoutExpense, paymentTransactionId, transactionId,
-                customerId, orderId, amount, GeneralLedger.EntryType.DEBIT, userId);
+                customerId, orderId, amount, GeneralLedger.EntryType.DEBIT, userId, TransactionNarration.TO_WALLET);
 
         // Credit: Create wallet liability
         GeneralLedger creditEntry = createLedgerEntry(
                 walletLiability, paymentTransactionId, transactionId,
-                customerId, orderId, amount, GeneralLedger.EntryType.CREDIT, userId);
+                customerId, orderId, amount, GeneralLedger.EntryType.CREDIT, userId, TransactionNarration.TO_WALLET);
 
         generalLedgerRepository.save(debitEntry);
         generalLedgerRepository.save(creditEntry);
@@ -253,12 +255,12 @@ public class LedgerService {
         // Debit: Reduce wallet liability
         GeneralLedger debitEntry = createLedgerEntry(
                 walletLiability, paymentTransactionId, transactionId,
-                customerId, orderId, amount, GeneralLedger.EntryType.DEBIT, userId);
+                customerId, orderId, amount, GeneralLedger.EntryType.DEBIT, userId, TransactionNarration.WITHDRAWAL_INITIATED);
 
         // Credit: Move to pending
         GeneralLedger creditEntry = createLedgerEntry(
                 clearingAccount, paymentTransactionId, transactionId,
-                customerId, orderId, amount, GeneralLedger.EntryType.CREDIT, userId);
+                customerId, orderId, amount, GeneralLedger.EntryType.CREDIT, userId, TransactionNarration.WITHDRAWAL_INITIATED);
 
         generalLedgerRepository.save(debitEntry);
         generalLedgerRepository.save(creditEntry);
@@ -285,12 +287,12 @@ public class LedgerService {
         // Debit: Clear pending
         GeneralLedger debitEntry = createLedgerEntry(
                 clearingAccount, paymentTransactionId, transactionId,
-                customerId, orderId, amount, GeneralLedger.EntryType.DEBIT, userId);
+                customerId, orderId, amount, GeneralLedger.EntryType.DEBIT, userId, TransactionNarration.WITHDRAWAL_SUCCESS);
 
         // Credit: Bank balance decreases
         GeneralLedger creditEntry = createLedgerEntry(
                 companyBank, paymentTransactionId, transactionId,
-                customerId, orderId, amount, GeneralLedger.EntryType.CREDIT, userId);
+                customerId, orderId, amount, GeneralLedger.EntryType.CREDIT, userId, TransactionNarration.WITHDRAWAL_SUCCESS);
 
         generalLedgerRepository.save(debitEntry);
         generalLedgerRepository.save(creditEntry);
@@ -317,17 +319,45 @@ public class LedgerService {
         // Debit: Clear pending
         GeneralLedger debitEntry = createLedgerEntry(
                 clearingAccount, paymentTransactionId, transactionId,
-                customerId, orderId, amount, GeneralLedger.EntryType.DEBIT, userId);
+                customerId, orderId, amount, GeneralLedger.EntryType.DEBIT, userId, TransactionNarration.WITHDRAWAL_FAILED);
 
         // Credit: Return to wallet liability
         GeneralLedger creditEntry = createLedgerEntry(
                 walletLiability, paymentTransactionId, transactionId,
-                customerId, orderId, amount, GeneralLedger.EntryType.CREDIT, userId);
+                customerId, orderId, amount, GeneralLedger.EntryType.CREDIT, userId, TransactionNarration.WITHDRAWAL_FAILED);
 
         generalLedgerRepository.save(debitEntry);
         generalLedgerRepository.save(creditEntry);
 
         log.info("Recorded Withdrawal Failed: Transaction={}, Amount={}", transactionId, amount);
+    }
+
+    // deduction from the wallet while order creation
+    @Transactional
+    public void deductionFromWallet(
+            String paymentTransactionId, String transactionId,
+            String customerId, String orderId, BigDecimal amount, String userId) {
+
+        ChartOfAccounts revenueAccount = chartOfAccountsRepository.findById("5001")
+                .orElseThrow(() -> new RuntimeException("Account 5001 not found"));
+
+        ChartOfAccounts customerWallet = chartOfAccountsRepository.findById("3001")
+                .orElseThrow(() -> new RuntimeException("Account 3001 not found"));
+
+        // Credit:
+        GeneralLedger debitEntry = createLedgerEntry(
+                revenueAccount, paymentTransactionId, transactionId,
+                customerId, orderId, amount, GeneralLedger.EntryType.CREDIT, userId, TransactionNarration.WALLET_DEDUCTION);
+
+        // Debit:
+        GeneralLedger creditEntry = createLedgerEntry(
+                customerWallet, paymentTransactionId, transactionId,
+                customerId, orderId, amount, GeneralLedger.EntryType.DEBIT, userId, TransactionNarration.WALLET_DEDUCTION);
+
+        generalLedgerRepository.save(debitEntry);
+        generalLedgerRepository.save(creditEntry);
+
+        log.info("Recorded Payin from  wallet Success: Transaction={}, Amount={}", transactionId, amount);
     }
 
     // ============ WALLET BALANCE CALCULATION ============

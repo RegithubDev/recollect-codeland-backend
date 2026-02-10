@@ -1,6 +1,7 @@
 package com.example.payment_services.service;
 
 import com.example.payment_services.dto.wallet.PayoutResponseDTO;
+import com.example.payment_services.dto.wallet.WalletDeductionDTO;
 import com.example.payment_services.dto.wallet.WalletWithdrawal;
 import com.example.payment_services.entity.GeneralLedger;
 import jakarta.transaction.Transactional;
@@ -46,6 +47,46 @@ public class WalletService {
                 getCurrentUserId()
         );
         return request;
+    }
+
+    @Transactional
+    public WalletDeductionDTO deductFromWallet(WalletDeductionDTO request) {
+        try {
+            log.info("Deducting from wallet: User={}, Amount={}",
+                    request.getUserId(), request.getAmount());
+
+            // 1. Check current wallet balance
+            BigDecimal currentBalance = ledgerService.getCustomerWalletBalance(request.getUserId());
+
+            // 2. Validate sufficient balance
+            if (currentBalance.compareTo(request.getAmount()) < 0) {
+                throw new RuntimeException("Insufficient wallet balance. " +
+                        "Current: " + currentBalance + ", Required: " + request.getAmount());
+            }
+
+            // 3. Create a WalletWithdrawal DTO to use existing withdrawal logic
+            WalletWithdrawal withdrawalRequest = new WalletWithdrawal();
+            withdrawalRequest.setReferenceId(request.getReferenceId());
+            withdrawalRequest.setFundAccountId(request.getUserId());
+            withdrawalRequest.setCustomerId(request.getUserId());
+            withdrawalRequest.setContactId(request.getUserId());
+            withdrawalRequest.setAmount(request.getAmount());
+
+            // 4. Call wallet withdrawal approved (this will create ledger entries)
+            walletWithdrawalApproved(withdrawalRequest);
+
+            // 5. Get updated balance
+            BigDecimal newBalance = ledgerService.getCustomerWalletBalance(request.getUserId());
+
+            log.info("Wallet deduction successful: User={}, Amount={}, NewBalance={}",
+                    request.getUserId(), request.getAmount(), newBalance);
+
+            return request;
+
+        } catch (Exception e) {
+            log.error("Error deducting from wallet", e);
+            throw new RuntimeException("Wallet deduction failed: " + e.getMessage());
+        }
     }
 
     @Transactional
