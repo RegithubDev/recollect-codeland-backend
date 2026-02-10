@@ -27,17 +27,14 @@ public class ExternalTokenValidationFilter extends OncePerRequestFilter {
     @Value("${app.auth.validation-url}")
     private String validationUrl;
 
-    @Value("${app.auth.timeout-ms}")
+    @Value("${app.auth.timeout-ms:5000}")
     private int timeoutMs;
 
-    @Value("${app.auth.header-name}")
+    @Value("${app.auth.header-name:Authorization}")
     private String authHeaderName;
 
-    @Value("${app.auth.bearer-prefix}")
+    @Value("${app.auth.bearer-prefix:Bearer}")
     private String bearerPrefix;
-
-    @Value("${app.auth.enabled}")
-    private boolean authEnabled;
 
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
@@ -64,27 +61,20 @@ public class ExternalTokenValidationFilter extends OncePerRequestFilter {
         String requestURI = request.getRequestURI();
         String method = request.getMethod();
 
-        logger.debug("Processing request: " + method + " " + requestURI);
+        logger.debug("Processing request: {} {}");
 
         // Skip validation for public endpoints
         if (isPublicEndpoint(requestURI, method)) {
-            logger.debug("Skipping validation for public endpoint: " + requestURI);
+            logger.debug("Skipping validation for public endpoint: {}");
             filterChain.doFilter(request, response);
             return;
         }
 
-        // Check if authentication is enabled
-        if (!authEnabled) {
-            logger.warn("Authentication is disabled - allowing all requests");
-            setAnonymousAuthentication();
-            filterChain.doFilter(request, response);
-            return;
-        }
-
+        // ALWAYS require authentication for non-public endpoints in production
         String authHeader = request.getHeader(authHeaderName);
 
         if (authHeader == null || !authHeader.startsWith(bearerPrefix + " ")) {
-            logger.warn("Missing or invalid Authorization header for: " + requestURI);
+            logger.warn("Missing or invalid Authorization header for: {}");
             sendUnauthorized(response, "Missing or invalid Authorization header. Format: " + bearerPrefix + " <token>");
             return;
         }
@@ -92,7 +82,7 @@ public class ExternalTokenValidationFilter extends OncePerRequestFilter {
         String token = authHeader.substring((bearerPrefix + " ").length()).trim();
 
         if (token.isEmpty()) {
-            logger.warn("Empty token provided for: " + requestURI);
+            logger.warn("Empty token provided for: {}");
             sendUnauthorized(response, "Empty token provided");
             return;
         }
@@ -101,7 +91,7 @@ public class ExternalTokenValidationFilter extends OncePerRequestFilter {
             UserInfo userInfo = validateTokenWithExternalServer(token);
 
             if (userInfo != null && userInfo.isValid()) {
-                logger.info("Token validated successfully for user: " + userInfo.getEmail());
+                logger.info("Token validated successfully for user: {}");
 
                 // Create authentication with user info
                 UsernamePasswordAuthenticationToken auth =
@@ -122,84 +112,66 @@ public class ExternalTokenValidationFilter extends OncePerRequestFilter {
 
                 filterChain.doFilter(request, response); // Continue chain
             } else {
-                logger.warn("Invalid token for request: " + requestURI);
+                logger.warn("Invalid token for request: {}");
                 sendUnauthorized(response, "Invalid or expired token");
-                return; // Return after sending error
+                return;
             }
 
         } catch (ResourceAccessException e) {
-            logger.error("Auth server timeout/unreachable for: " + requestURI, e);
+            logger.error("Auth server timeout/unreachable for: {}");
             sendServiceUnavailable(response, "Authentication service unavailable");
-            return; // Return after sending error
+            return;
         } catch (Exception e) {
-            logger.error("Token validation error for: " + requestURI, e);
+            logger.error("Token validation error for: {}");
             sendInternalError(response, "Token validation failed");
-            return; // Return after sending error
+            return;
         }
     }
 
-    private void setAnonymousAuthentication() {
-        List<SimpleGrantedAuthority> authorities = new ArrayList<>();
-        authorities.add(new SimpleGrantedAuthority("ROLE_USER"));
-
-        UserInfo anonymousUser = new UserInfo(
-                false,
-                "anonymous",
-                "USER",
-                "anonymous@example.com",
-                "",
-                "Authentication disabled",
-                System.currentTimeMillis()
-        );
-
-        UsernamePasswordAuthenticationToken auth =
-                new UsernamePasswordAuthenticationToken(
-                        anonymousUser,
-                        null,
-                        authorities
-                );
-
-        SecurityContextHolder.getContext().setAuthentication(auth);
-    }
-
     private boolean isPublicEndpoint(String requestURI, String method) {
-        // Exact match endpoints (could also be moved to properties)
+        String lowerUri = requestURI.toLowerCase();
+
+        // 1. Health check endpoints ONLY
         if (requestURI.equals("/api/payments/health") && "GET".equals(method)) {
             return true;
         }
 
-        if (requestURI.equals("/api/payments/webhook") && "POST".equals(method)) {
-            return true;
-        }
-
-        // Swagger/OpenAPI endpoints
-        String lowerUri = requestURI.toLowerCase();
+        // 2. Swagger/OpenAPI documentation ONLY (consider disabling in production)
         if (lowerUri.startsWith("/swagger-ui") ||
                 lowerUri.startsWith("/v3/api-docs") ||
                 lowerUri.equals("/swagger-ui.html") ||
                 lowerUri.startsWith("/swagger-resources") ||
                 lowerUri.startsWith("/configuration/ui") ||
                 lowerUri.startsWith("/configuration/security") ||
-                lowerUri.startsWith("/webjars/") ||
-                lowerUri.equals("/favicon.ico") ||
-                lowerUri.equals("/error")) {
-            return true;
+                lowerUri.startsWith("/webjars/")) {
+            logger.warn("Swagger access attempted in production: {}");
+            return true; // Consider returning false to disable Swagger in production
         }
-        // ========== ALL WEBHOOK ENDPOINTS ==========
-        // Allow ALL endpoints under /api/webhook/** without authentication
+
+        // 3. Webhook endpoints (if required by external services)
         if (requestURI.startsWith("/api/webhook/")) {
-            // Only allow POST for actual webhooks, GET for health checks
-            if ("POST".equals(method) || "GET".equals(method)) {
-                logger.debug("Allowing webhook endpoint without auth: " + requestURI);
+            if ("POST".equals(method)) {
+                // Consider adding webhook signature validation here
                 return true;
             }
         }
-        // Actuator endpoints
-        if (lowerUri.startsWith("/actuator/health") ||
-                lowerUri.startsWith("/actuator/info")) {
+
+        // 4. Actuator health (minimal info only)
+        if (lowerUri.equals("/actuator/health") && "GET".equals(method)) {
             return true;
         }
 
+        // 5. Favicon and error pages
+        if (lowerUri.equals("/favicon.ico") || lowerUri.equals("/error")) {
+            return true;
+        }
+
+        // 6. CORS preflight
+        if ("OPTIONS".equals(method)) {
+            return true;
+        }
+
+        // EVERYTHING ELSE REQUIRES AUTHENTICATION
         return false;
     }
 
@@ -238,10 +210,10 @@ public class ExternalTokenValidationFilter extends OncePerRequestFilter {
                             System.currentTimeMillis()
                     );
                 } else {
-                    logger.debug("Token invalid. Response: " + response.getBody());
+                    logger.debug("Token invalid. Response: {}");
                 }
             } else {
-                logger.warn("Auth server returned status: " + response.getStatusCode());
+                logger.warn("Auth server returned status: {}");
             }
 
         } catch (Exception e) {
