@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -48,10 +49,10 @@ public class PaymentDataService {
         // Parse dates
         DateTimeFormatter formatter = DateTimeFormatter.ISO_OFFSET_DATE_TIME;
         if (orderResponse.getCreatedAt() != null) {
-            transaction.setCreatedAt(LocalDateTime.parse(orderResponse.getCreatedAt(), formatter));
+            transaction.setCreatedAt(parseDateSafely(orderResponse.getCreatedAt())); // CHANGE THIS
         }
         if (orderResponse.getOrderExpiryTime() != null) {
-            transaction.setOrderExpiryTime(LocalDateTime.parse(orderResponse.getOrderExpiryTime(), formatter));
+            transaction.setOrderExpiryTime(parseDateSafely(orderResponse.getOrderExpiryTime()));
         }
 
         // Set customer details
@@ -78,6 +79,40 @@ public class PaymentDataService {
         }
 
         return paymentTransactionRepository.save(transaction);
+    }
+
+    /**
+     * Parse date safely - handles both formats:
+     * 1. Cashfree format with nanoseconds: "2026-02-10T13:07:53.339991171"
+     * 2. Simple format: "2026-02-10T13:07:53"
+     */
+    private LocalDateTime parseDateSafely(String dateStr) {
+        if (dateStr == null || dateStr.trim().isEmpty()) {
+            return LocalDateTime.now();
+        }
+
+        try {
+            // First try: ISO_LOCAL_DATE_TIME (handles simple format)
+            return LocalDateTime.parse(dateStr, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        } catch (DateTimeParseException e1) {
+            try {
+                // Second try: ISO_OFFSET_DATE_TIME (handles timezone)
+                return LocalDateTime.parse(dateStr, DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+            } catch (DateTimeParseException e2) {
+                try {
+                    // Third try: Handle nanoseconds by truncating
+                    if (dateStr.contains(".")) {
+                        String[] parts = dateStr.split("\\.");
+                        String datePart = parts[0]; // "2026-02-10T13:07:53"
+                        return LocalDateTime.parse(datePart, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+                    }
+                    throw e2;
+                } catch (Exception e3) {
+                    log.warn("Failed to parse date: {}, using current time", dateStr);
+                    return LocalDateTime.now();
+                }
+            }
+        }
     }
 
     @Transactional
