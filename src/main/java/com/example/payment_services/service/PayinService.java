@@ -10,10 +10,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.text.DecimalFormat;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 
-import static com.example.payment_services.util.SecurityUtil.getCurrentUser;
 import static com.example.payment_services.util.SecurityUtil.getCurrentUserId;
 
 @Service
@@ -26,34 +25,123 @@ public class PayinService {
     private final PaymentTransactionRepository paymentTransactionRepository;
     private final LedgerService ledgerService;
 
+    @Transactional
     public PayinOrderResponseDTO createPaymentOrder(PayinOrderRequestDTO request) {
         try {
-            // Add any business logic here
+            // Validate basic requirements
             if (request.getOrderAmount() == null || request.getOrderAmount() <= 0) {
                 throw new IllegalArgumentException("Order amount must be greater than 0");
             }
 
-            if (request.getCustomerDetails() == null ||
-                    request.getCustomerDetails().getCustomerId() == null) {
+            if (request.getCustomerDetails() == null || request.getCustomerDetails().getCustomerId() == null) {
                 throw new IllegalArgumentException("Customer details are required");
             }
-            PayinOrderResponseDTO response = cashfreePayinHttpService.createOrder(request);
-            if (request.getWalletAmount()> 0){
-                ledgerService.deductionFromWallet(response.getCfOrderId(),response.getCfOrderId(),
-                        response.getCustomerDetails().getCustomerId(),response.getOrderId(), BigDecimal.valueOf(request.getWalletAmount()), getCurrentUserId());
+
+            // Initialize amounts if null
+            double realAmount = request.getRealAmount() != null ? request.getRealAmount() : 0.0;
+            double walletAmount = request.getWalletAmount() != null ? request.getWalletAmount() : 0.0;
+
+            // Validate total matches order amount
+            if (Math.abs((realAmount + walletAmount) - request.getOrderAmount()) > 0.01) {
+                throw new IllegalArgumentException("realAmount + walletAmount must equal orderAmount");
             }
-            log.info("Payment order created: orderId={}, cfOrderId={}",
-                    response.getOrderId(), response.getCfOrderId());
-            // save to database
+
+            PayinOrderResponseDTO response;
+
+            // Case 1: Real money involved (with or without wallet)
+            if (realAmount > 0) {
+                response = cashfreePayinHttpService.createOrder(request);
+                log.info("Cashfree order created: orderId={}", response.getOrderId());
+
+                // Deduct wallet if applicable
+                if (walletAmount > 0) {
+                    handleWalletDeduction(request, response, walletAmount);
+                }
+            }
+            // Case 2: Wallet only payment
+            else if (walletAmount > 0) {
+                response = createWalletOnlyOrderResponse(request);
+                handleWalletDeduction(request, response, walletAmount);
+                response.setOrderStatus("PAID");
+            } else {
+                throw new IllegalArgumentException("Either realAmount or walletAmount must be greater than 0");
+            }
+
+            // Save to database
             PaymentTransaction paymentTransaction = paymentDataService.saveOrder(response);
-            log.info("Payment order inserted in database:{}", paymentTransaction);
+            log.info("Order saved: id={}", paymentTransaction.getId());
+
             return response;
+
         } catch (Exception e) {
             log.error("Create payment order error", e);
             throw new RuntimeException("Payment order creation failed: " + e.getMessage());
         }
     }
 
+    /**
+     * Helper method to handle wallet-only order creation and wallet deduction
+     */
+    private PayinOrderResponseDTO createWalletOnlyOrderResponse(PayinOrderRequestDTO request) {
+        PayinOrderResponseDTO response = new PayinOrderResponseDTO();
+
+        String timestamp = String.valueOf(System.currentTimeMillis());
+        String orderId = "WALLET_" + timestamp;
+
+        // Set order details
+        response.setOrderId(orderId);
+        response.setCfOrderId("CF_" + orderId);
+        response.setOrderAmount(request.getOrderAmount());
+        response.setWalletAmount(request.getWalletAmount());
+        response.setRealAmount(0.0);
+        response.setOrderCurrency(request.getOrderCurrency() != null ? request.getOrderCurrency() : "INR");
+        response.setOrderStatus("ACTIVE");
+        response.setEntity("order");
+
+        String now = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        response.setCreatedAt(now);
+        response.setOrderExpiryTime(LocalDateTime.now().plusHours(24).format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+
+        response.setPaymentSessionId("SESS_" + timestamp);
+
+        if (request.getCustomerDetails() != null) {
+            PayinOrderResponseDTO.CustomerDetails customer = new PayinOrderResponseDTO.CustomerDetails();
+            customer.setCustomerId(request.getCustomerDetails().getCustomerId());
+            customer.setCustomerName(request.getCustomerDetails().getCustomerName());
+            customer.setCustomerEmail(request.getCustomerDetails().getCustomerEmail());
+            customer.setCustomerPhone(request.getCustomerDetails().getCustomerPhone());
+            customer.setCustomerUid(request.getCustomerDetails().getCustomerId());
+            response.setCustomerDetails(customer);
+        }
+        response.setOrderNote(request.getOrderNote());
+
+        return response;
+    }
+
+    /**
+     * Handle wallet deduction for both cases
+     */
+    private void handleWalletDeduction(PayinOrderRequestDTO request, PayinOrderResponseDTO response, Double walletAmount) {
+        try {
+            String transactionId = "TX_" + System.currentTimeMillis();
+
+            ledgerService.deductionFromWallet(
+                    response.getCfOrderId(),
+                    transactionId,
+                    request.getCustomerDetails().getCustomerId(),
+                    response.getOrderId(),
+                    BigDecimal.valueOf(walletAmount),
+                    getCurrentUserId()
+            );
+
+            log.info("Wallet deduction successful: Order={}, Amount={}",
+                    response.getOrderId(), walletAmount);
+
+        } catch (Exception e) {
+            log.error("Wallet deduction failed: {}", e.getMessage());
+            throw new RuntimeException("Wallet deduction failed: " + e.getMessage());
+        }
+    }
     public PaymentTransaction getOrderDetails(String orderId, String cfPaymentId, BigDecimal amount, String paymentMethod) {
         try {
             PayinOrderResponseDTO order = cashfreePayinHttpService.getOrder(orderId);
