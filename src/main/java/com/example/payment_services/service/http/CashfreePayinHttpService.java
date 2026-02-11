@@ -22,9 +22,8 @@ public class CashfreePayinHttpService {
     public PayinOrderResponseDTO createOrder(PayinOrderRequestDTO request) {
         try {
             String url = cashfreeConfig.getPgBaseUrl() + "/orders";
-
+            request.setOrderAmount(request.getRealAmount());
             log.info("Creating payin order: {}", request);
-
             HttpHeaders headers = createPayinHeaders();
             HttpEntity<PayinOrderRequestDTO> entity = new HttpEntity<>(request, headers);
 
