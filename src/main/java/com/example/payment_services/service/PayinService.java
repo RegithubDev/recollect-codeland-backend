@@ -68,6 +68,11 @@ public class PayinService {
             }
 
             // Save to database
+            // set back the actual real and wallet
+            response.setWalletAmount(request.getWalletAmount());
+            response.setRealAmount(request.getRealAmount());
+            response.setOrderAmount(request.getWalletAmount() + request.getRealAmount());
+            request.setOrderAmount(request.getRealAmount());
             PaymentTransaction paymentTransaction = paymentDataService.saveOrder(response);
             log.info("Order saved: id={}", paymentTransaction.getId());
 
