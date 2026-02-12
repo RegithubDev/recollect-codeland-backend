@@ -14,7 +14,7 @@ public final class TransactionNarration {
     public static final String REFUND_FAILED = "Refund Request Failed";
 
     // Wallet Transactions
-    public static final String TO_WALLET = "Amount Credited to Customer Wallet";
+    public static final String TO_WALLET = "Order Amount Credited to Customer Wallet";
     public static final String WALLET_DEDUCTION = "Order Amount Deducted From Wallet";
 
     // Withdrawal
