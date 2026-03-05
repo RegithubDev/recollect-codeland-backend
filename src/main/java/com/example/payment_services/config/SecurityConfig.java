@@ -29,7 +29,7 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
-                .cors(cors -> cors.configurationSource(corsConfigurationSource())) // Add this
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
@@ -47,10 +47,16 @@ public class SecurityConfig {
                                 "/favicon.ico"
                         ).permitAll()
 
-                        // Public API endpoints
+                        // Public API endpoints - FIXED PATHS
                         .requestMatchers(
                                 "/api/payments/health",
-                                "/api/payments/webhook",
+                                "/api/webhook/**",           // Allow ALL webhook endpoints
+                                "/api/webhook/cashfree/payment",  // Explicitly allow payin webhook
+                                "/api/webhook/cashfree/payout",    // Explicitly allow payout webhook
+                                "/api/webhook/cashfree/payment/health",
+                                "/api/webhook/cashfree/payout/health",
+                                "/api/webhook/cashfree/payment/test",
+                                "/api/webhook/cashfree/payout/test",
                                 "/error"
                         ).permitAll()
 
@@ -91,9 +97,12 @@ public class SecurityConfig {
 
         // Allow these origins (adjust as needed)
         configuration.setAllowedOrigins(Arrays.asList(
-                "http://localhost:8080",  // Your server itself
-                "http://localhost:3000",  // React dev server
-                "https://editor.swagger.io"  // Swagger editor
+                "http://localhost:8080",
+                "http://localhost:3000",
+                "https://editor.swagger.io",
+                "https://dev.recollect.in",  // Add your domain
+                "https://api.cashfree.com",   // Cashfree API domain
+                "https://sandbox.cashfree.com"    // Cashfree test domain
         ));
 
         // Allow all HTTP methods
@@ -109,7 +118,11 @@ public class SecurityConfig {
                 "Accept",
                 "Origin",
                 "Access-Control-Request-Method",
-                "Access-Control-Request-Headers"
+                "Access-Control-Request-Headers",
+                "x-webhook-signature",      // Cashfree webhook headers
+                "x-webhook-timestamp",       // Cashfree webhook headers
+                "x-cf-signature",            // Cashfree payout headers
+                "x-cf-timestamp"             // Cashfree payout headers
         ));
 
         // Expose headers to client
