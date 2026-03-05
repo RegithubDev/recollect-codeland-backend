@@ -176,14 +176,20 @@ public class PayinWebhookService {
         log.info("Successfully updated payment status for order: {} to {}",
                 orderId, paymentStatus);
 
-        // Trigger post-processing actions
-        if(!transaction.getIsWalletTopUp()){
-            triggerPostPaymentActions(orderId, paymentStatus, paymentMessage, transaction);
-        }
-        else{
-            ledgerService.recordAddToWallet(transaction.getCfPaymentId(),transaction.getBankReference(),
-                    transaction.getCustomerDetails().getCustomerId(), orderId, transaction.getRealAmount(), getCurrentUserId());
+        Boolean isWalletTopUp = transaction.getIsWalletTopUp();
+
+        if (isWalletTopUp != null && isWalletTopUp) {
+            ledgerService.recordAddToWallet(
+                    transaction.getCfPaymentId(),
+                    transaction.getBankReference(),
+                    transaction.getCustomerDetails().getCustomerId(),
+                    orderId,
+                    transaction.getRealAmount(),
+                    getCurrentUserId()
+            );
             log.info("Post-payment actions triggered for wallet Top Up successful order: {}", orderId);
+        } else {
+            triggerPostPaymentActions(orderId, paymentStatus, paymentMessage, transaction);
         }
     }
 

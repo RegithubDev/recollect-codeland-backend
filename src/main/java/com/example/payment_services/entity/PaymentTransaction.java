@@ -55,8 +55,8 @@ public class PaymentTransaction {
     @Column(name = "order_expiry_time")
     private LocalDateTime orderExpiryTime;
 
-    @Column(name = "is_wallet_top_up")
-    private Boolean isWalletTopUp;
+    @Column(name = "is_wallet_top_up", nullable = false)
+    private Boolean isWalletTopUp = false;
 
     // ========== PAYMENT INFORMATION ==========
     @Column(name = "cf_payment_id")
