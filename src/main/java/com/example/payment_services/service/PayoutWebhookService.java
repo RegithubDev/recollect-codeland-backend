@@ -18,6 +18,7 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import static com.example.payment_services.util.SecurityUtil.getCurrentUserId;
 
 @Service
 @RequiredArgsConstructor
@@ -27,6 +28,7 @@ public class PayoutWebhookService {
     private final PayoutTransactionRepository payoutTransactionRepository;
     private final ObjectMapper objectMapper;
     private final CashfreeConfig cashfreeConfig;
+    private final LedgerService ledgerService;
 
     /**
      * Enum for payout status
@@ -402,37 +404,19 @@ public class PayoutWebhookService {
         try {
             switch (eventType) {
                 case "TRANSFER_SUCCESS":
-                    // Send success notification to user
-                    sendPayoutSuccessNotification(transaction);
-                    // Update accounting
-                    updateAccountingForSuccessfulPayout(transaction);
-                    // Update user wallet if needed
-                    updateUserWallet(transaction, "SUCCESS");
+                    ledgerService.recordWithdrawalProcessedSuccess(transaction.getTransferId(), transaction.getCfTransferId(),
+                             transaction.getCustomerId(), transaction.getTransferId(), transaction.getTransferAmount(),  getCurrentUserId());
                     break;
-
-                case "TRANSFER_FAILED":
-                    // Send failure notification
-                    sendPayoutFailureNotification(transaction);
-                    // Reverse wallet deduction
-                    updateUserWallet(transaction, "FAILED");
-                    // Log failure for analytics
-                    logPayoutFailure(transaction);
-                    break;
-
-                case "TRANSFER_REVERSED":
-                    // Handle reversal
-                    handlePayoutReversal(transaction);
-                    // Update user wallet
-                    updateUserWallet(transaction, "REVERSED");
+                case "TRANSFER_FAILED", "TRANSFER_REVERSED":
+                    ledgerService.recordWithdrawalFailed(transaction.getTransferId(), transaction.getCfTransferId(),
+                            transaction.getCustomerId(), transaction.getTransferId(), transaction.getTransferAmount(),  getCurrentUserId());
                     break;
 
                 case "BENEFICIARY_ADDED":
-                    // Update beneficiary status in your system
                     updateBeneficiaryStatus(transaction);
                     break;
 
                 case "BENEFICIARY_VERIFICATION_FAILED":
-                    // Notify admin about verification failure
                     notifyBeneficiaryVerificationFailure(transaction);
                     break;
             }

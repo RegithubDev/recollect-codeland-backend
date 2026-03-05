@@ -37,6 +37,19 @@ public class WalletService {
     }
 
     @Transactional
+    public PayoutResponseDTO addToWallet(PayoutResponseDTO request) {
+        ledgerService.recordAddToWallet(
+                request.getReferenceId(),
+                request.getFundAccountId(),
+                request.getCustomerId(),
+                request.getContactId(),
+                request.getAmount(),
+                getCurrentUserId()
+        );
+        return request;
+    }
+
+    @Transactional
     public WalletWithdrawal walletWithdrawalApproved(WalletWithdrawal request) {
         ledgerService.recordWithdrawalApproved(
                 request.getReferenceId(),

@@ -88,15 +88,15 @@ public class LedgerService {
         ChartOfAccounts companyBank = chartOfAccountsRepository.findById("1001")
                 .orElseThrow(() -> new RuntimeException("Account 1001 not found"));
 
-        ChartOfAccounts clearingAccount = chartOfAccountsRepository.findById("5001")
-                .orElseThrow(() -> new RuntimeException("Account 5001 not found"));
+        ChartOfAccounts clearingAccount = chartOfAccountsRepository.findById("4001")
+                .orElseThrow(() -> new RuntimeException("Account 4001 not found"));
 
         // Debit: Bank balance increases
         GeneralLedger debitEntry = createLedgerEntry(
                 companyBank, paymentTransactionId, transactionId,
                 customerId, orderId, amount, GeneralLedger.EntryType.DEBIT, userId, TransactionNarration.PAY_IN_SUCCESS);
 
-        // Credit: revenue increase
+        // Credit: Clearing Pending Amount
         GeneralLedger creditEntry = createLedgerEntry(
                 clearingAccount, paymentTransactionId, transactionId,
                 customerId, orderId, amount, GeneralLedger.EntryType.CREDIT, userId, TransactionNarration.PAY_IN_SUCCESS);
@@ -237,6 +237,37 @@ public class LedgerService {
     }
 
     /**
+     * SCENARIO 5: Add to Wallet (To customer wallet)
+     * for payout we have taking ref id, fund account id, customer id, contact id, amount, user id
+     */
+    @Transactional
+    public void recordAddToWallet(
+            String paymentTransactionId, String transactionId,
+            String customerId, String orderId, BigDecimal amount, String userId) {
+
+        ChartOfAccounts payoutExpense = chartOfAccountsRepository.findById("2001")
+                .orElseThrow(() -> new RuntimeException("Account 2001  not found"));
+
+        ChartOfAccounts walletLiability = chartOfAccountsRepository.findById("3001")
+                .orElseThrow(() -> new RuntimeException("Account 3001 not found"));
+
+        // Debit: Increase expense
+        GeneralLedger debitEntry = createLedgerEntry(
+                payoutExpense, paymentTransactionId, transactionId,
+                customerId, orderId, amount, GeneralLedger.EntryType.DEBIT, userId, TransactionNarration.WALLET_TOP_UP);
+
+        // Credit: Create wallet liability
+        GeneralLedger creditEntry = createLedgerEntry(
+                walletLiability, paymentTransactionId, transactionId,
+                customerId, orderId, amount, GeneralLedger.EntryType.CREDIT, userId, TransactionNarration.WALLET_TOP_UP);
+
+        generalLedgerRepository.save(debitEntry);
+        generalLedgerRepository.save(creditEntry);
+
+        log.info("Recorded Wallet Payout: Transaction={}, Amount={}", transactionId, amount);
+    }
+
+    /**
      * SCENARIO 6: Withdrawal Approved
      * 1011 (Liability) DEBIT = Reduce wallet liability
      * 1012 (Clearing) CREDIT = Move to pending
@@ -278,11 +309,11 @@ public class LedgerService {
             String paymentTransactionId, String transactionId,
             String customerId, String orderId, BigDecimal amount, String userId) {
 
-        ChartOfAccounts clearingAccount = chartOfAccountsRepository.findById("1013")
-                .orElseThrow(() -> new RuntimeException("Account 1013 not found"));
+        ChartOfAccounts clearingAccount = chartOfAccountsRepository.findById("4001")
+                .orElseThrow(() -> new RuntimeException("Account 4001 not found"));
 
-        ChartOfAccounts companyBank = chartOfAccountsRepository.findById("1014")
-                .orElseThrow(() -> new RuntimeException("Account 1014 not found"));
+        ChartOfAccounts companyBank = chartOfAccountsRepository.findById("1001")
+                .orElseThrow(() -> new RuntimeException("Account 1001 not found"));
 
         // Debit: Clear pending
         GeneralLedger debitEntry = createLedgerEntry(
@@ -310,11 +341,11 @@ public class LedgerService {
             String paymentTransactionId, String transactionId,
             String customerId, String orderId, BigDecimal amount, String userId) {
 
-        ChartOfAccounts clearingAccount = chartOfAccountsRepository.findById("1015")
-                .orElseThrow(() -> new RuntimeException("Account 1015 not found"));
+        ChartOfAccounts clearingAccount = chartOfAccountsRepository.findById("4001")
+                .orElseThrow(() -> new RuntimeException("Account 4001 not found"));
 
-        ChartOfAccounts walletLiability = chartOfAccountsRepository.findById("1016")
-                .orElseThrow(() -> new RuntimeException("Account 1016 not found"));
+        ChartOfAccounts walletLiability = chartOfAccountsRepository.findById("3001")
+                .orElseThrow(() -> new RuntimeException("Account 3001 not found"));
 
         // Debit: Clear pending
         GeneralLedger debitEntry = createLedgerEntry(

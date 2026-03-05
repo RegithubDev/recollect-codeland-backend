@@ -21,6 +21,7 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import static com.example.payment_services.util.SecurityUtil.getCurrentUserId;
 
 @Service
 @RequiredArgsConstructor
@@ -30,6 +31,7 @@ public class PayinWebhookService {
     private final PaymentTransactionRepository paymentTransactionRepository;
     private final ObjectMapper objectMapper;
     private final CashfreeConfig cashfreeConfig;
+    private final LedgerService ledgerService;
 
 
     /**
@@ -150,16 +152,13 @@ public class PayinWebhookService {
         String orderId = (String) webhookData.get("orderId");
         String paymentStatus = (String) webhookData.get("paymentStatus");
         String cfPaymentId = (String) webhookData.get("cfPaymentId");
-        BigDecimal paymentAmount = (BigDecimal) webhookData.get("paymentAmount");
-        LocalDateTime paymentTime = (LocalDateTime) webhookData.get("paymentTime");
         String paymentMessage = (String) webhookData.get("paymentMessage");
-        String rawPayload = (String) webhookData.get("rawPayload");
 
         log.info("Processing webhook for order: {}, status: {}", orderId, paymentStatus);
 
         // Find the payment transaction
         Optional<PaymentTransaction> transactionOpt =
-                paymentTransactionRepository.findByOrderId(orderId);
+                paymentTransactionRepository.findByCfOrderId(cfPaymentId);
 
         if (transactionOpt.isEmpty()) {
             log.error("Payment transaction not found for order: {}", orderId);
@@ -178,7 +177,7 @@ public class PayinWebhookService {
                 orderId, paymentStatus);
 
         // Trigger post-processing actions
-        triggerPostPaymentActions(orderId, paymentStatus, paymentMessage);
+        triggerPostPaymentActions(orderId, paymentStatus, paymentMessage, transaction);
     }
 
     /**
@@ -240,24 +239,20 @@ public class PayinWebhookService {
      * Trigger post-payment actions
      */
     private void triggerPostPaymentActions(String orderId, String paymentStatus,
-                                           String paymentMessage) {
+                                           String paymentMessage, PaymentTransaction transaction) {
         try {
             switch (paymentStatus) {
                 case "SUCCESS":
-                    // These would be implemented as separate services
-                    // sendConfirmationEmail(orderId);
-                    // updateInventory(orderId);
-                    // generateInvoice(orderId);
+                    ledgerService.recordPaymentSuccess(transaction.getCfPaymentId(),transaction.getBankReference(),
+                            transaction.getCustomerDetails().getCustomerId(), orderId, transaction.getRealAmount(), getCurrentUserId());
                     log.info("Post-payment actions triggered for successful order: {}", orderId);
                     break;
 
                 case "FAILED":
-                    // sendFailureNotification(orderId, paymentMessage);
                     log.warn("Payment failed for order: {} - {}", orderId, paymentMessage);
                     break;
 
                 case "USER_DROPPED":
-                    // sendAbandonedCartEmail(orderId);
                     log.info("User dropped payment for order: {}", orderId);
                     break;
             }

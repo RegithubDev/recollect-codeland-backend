@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -31,61 +32,84 @@ public class PayinWebhookController {
         String rawBody = null;
 
         try {
-            // Log all headers for debugging
-            log.info("=== WEBHOOK TEST REQUEST RECEIVED ===");
-            log.info("Method: {}", request.getMethod());
-            log.info("Content-Type: {}", request.getContentType());
+            // Read request body
+            rawBody = readRequestBody(request);
 
-            java.util.Enumeration<String> headerNames = request.getHeaderNames();
-            while (headerNames.hasMoreElements()) {
-                String headerName = headerNames.nextElement();
-                log.info("Header {}: {}", headerName, request.getHeader(headerName));
+            // Check if this is a test request (empty body or test headers)
+            if (isTestRequest(request, rawBody)) {
+                log.info("Test webhook detected - returning OK");
+                return ResponseEntity.ok("OK");
             }
 
-            // 1. Read request body
-            rawBody = readRequestBody(request);
-            log.info("Raw body length: {}, content: {}",
-                    rawBody != null ? rawBody.length() : 0,
-                    rawBody != null && !rawBody.isEmpty() ? rawBody.substring(0, Math.min(rawBody.length(), 200)) : "empty");
+            log.info("Processing actual payment webhook");
 
-            // 2. Cashfree test response - MUST match exactly what they expect
-            Map<String, Object> response = new HashMap<>();
-            response.put("status", "success");
-            response.put("message", "Webhook received successfully");
-            response.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_DATE_TIME));
+            // Get signature headers
+            String signature = request.getHeader("x-webhook-signature");
+            String timestamp = request.getHeader("x-webhook-timestamp");
 
-            // Return 200 OK with simple response
-            return ResponseEntity.ok(response);
+            // Validate headers
+            if (signature == null || signature.isEmpty() || timestamp == null || timestamp.isEmpty()) {
+                log.error("Missing signature headers");
+                return ResponseEntity.badRequest().body("Missing signature headers");
+            }
+
+            // Verify signature
+            if (!payinWebhookService.verifyWebhookSignature(rawBody, signature, timestamp)) {
+                log.error("Invalid webhook signature");
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid signature");
+            }
+
+            // Parse and process webhook (this will update the database)
+            Map<String, Object> webhookData = payinWebhookService.parseWebhookPayload(rawBody);
+            payinWebhookService.processPaymentWebhook(webhookData);
+
+            log.info("Webhook processed successfully for order: {}", webhookData.get("orderId"));
+
+            // Return success response
+            return ResponseEntity.ok("OK");
 
         } catch (Exception e) {
-            log.error("Error in webhook test", e);
+            log.error("Error processing webhook", e);
 
-            // Even on error, return 200 to satisfy test
-            Map<String, Object> errorResponse = new HashMap<>();
-            errorResponse.put("status", "success");
-            errorResponse.put("message", "Webhook received");
-            errorResponse.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_DATE_TIME));
-
-            return ResponseEntity.ok(errorResponse);
+            // Always return 200 OK to prevent Cashfree from retrying
+            // But log the error for investigation
+            return ResponseEntity.ok("OK");
         }
+    }
+
+    /**
+     * Check if this is a test request
+     */
+    private boolean isTestRequest(HttpServletRequest request, String rawBody) {
+        // Check for empty body
+        if (rawBody == null || rawBody.trim().isEmpty()) {
+            return true;
+        }
+
+        // Check for test headers (Cashfree might send test indicators)
+        String userAgent = request.getHeader("User-Agent");
+        if (userAgent != null && userAgent.contains("test")) {
+            return true;
+        }
+
+        // Check if body contains test indicators
+        if (rawBody.contains("test") || rawBody.contains("ping")) {
+            return true;
+        }
+
+        return false;
     }
 
     @GetMapping("/cashfree/payment")
     @Operation(summary = "Handle GET requests for webhook testing")
-    public ResponseEntity<?> handleCashfreePaymentWebhookGet() {
+    public ResponseEntity<String> handleCashfreePaymentWebhookGet() {
         log.info("GET request received on webhook endpoint");
-
-        Map<String, Object> response = new HashMap<>();
-        response.put("status", "success");
-        response.put("message", "Webhook endpoint is ready");
-        response.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_DATE_TIME));
-
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok("OK");
     }
 
     @GetMapping("/cashfree/payment/health")
     @Operation(summary = "Webhook Health Check")
-    public ResponseEntity<?> webhookHealthCheck() {
+    public ResponseEntity<Map<String, Object>> webhookHealthCheck() {
         Map<String, Object> response = new HashMap<>();
         response.put("status", "healthy");
         response.put("service", "PayinWebhookService");

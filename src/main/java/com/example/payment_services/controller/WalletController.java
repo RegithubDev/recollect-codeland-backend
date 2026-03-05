@@ -176,7 +176,7 @@ public class WalletController {
             payoutRequest.setContactId(request.getUserId());
             payoutRequest.setAmount(request.getAmount());
 
-            PayoutResponseDTO result = walletService.payoutToWallet(payoutRequest);
+            PayoutResponseDTO result = walletService.addToWallet(payoutRequest);
             return ResponseEntity.ok(Map.of(
                     "message", "Money added to wallet successfully",
                     "amount", request.getAmount(),

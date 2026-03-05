@@ -14,11 +14,13 @@ public final class TransactionNarration {
     public static final String REFUND_FAILED = "Refund Request Failed";
 
     // Wallet Transactions
-    public static final String TO_WALLET = "Order Amount Credited to Customer Wallet";
-    public static final String WALLET_DEDUCTION = "Order Amount Deducted From Wallet";
+    public static final String TO_WALLET = "Order Amount Credited to Wallet";
+    public static final String WALLET_DEDUCTION = "Order Amount Debited From Wallet";
 
+    //Top Up
+    public static final String WALLET_TOP_UP = "Added Money to Wallet";
     // Withdrawal
-    public static final String WITHDRAWAL_INITIATED = "Wallet Withdrawal Request Initiated";
+    public static final String WITHDRAWAL_INITIATED = "Wallet Withdrawal";
     public static final String WITHDRAWAL_SUCCESS = "Successfully Withdrawn Wallet Amount";
     public static final String WITHDRAWAL_FAILED = "Wallet Amount Withdrawal Failed";
 
