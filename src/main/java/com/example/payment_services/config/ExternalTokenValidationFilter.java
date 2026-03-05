@@ -61,11 +61,11 @@ public class ExternalTokenValidationFilter extends OncePerRequestFilter {
         String requestURI = request.getRequestURI();
         String method = request.getMethod();
 
-        logger.debug("Processing request: {} {}");
+        logger.debug("Processing request: " + requestURI + " " + method);
 
         // Skip validation for public endpoints
         if (isPublicEndpoint(requestURI, method)) {
-            logger.debug("Skipping validation for public endpoint: {}");
+            logger.debug("Skipping validation for public endpoint: " + requestURI);
             filterChain.doFilter(request, response);
             return;
         }
@@ -74,7 +74,7 @@ public class ExternalTokenValidationFilter extends OncePerRequestFilter {
         String authHeader = request.getHeader(authHeaderName);
 
         if (authHeader == null || !authHeader.startsWith(bearerPrefix + " ")) {
-            logger.warn("Missing or invalid Authorization header for: {}");
+            logger.warn("Missing or invalid Authorization header for: " + requestURI);
             sendUnauthorized(response, "Missing or invalid Authorization header. Format: " + bearerPrefix + " <token>");
             return;
         }
@@ -82,7 +82,7 @@ public class ExternalTokenValidationFilter extends OncePerRequestFilter {
         String token = authHeader.substring((bearerPrefix + " ").length()).trim();
 
         if (token.isEmpty()) {
-            logger.warn("Empty token provided for: {}");
+            logger.warn("Empty token provided for: " + requestURI);
             sendUnauthorized(response, "Empty token provided");
             return;
         }
@@ -91,7 +91,7 @@ public class ExternalTokenValidationFilter extends OncePerRequestFilter {
             UserInfo userInfo = validateTokenWithExternalServer(token);
 
             if (userInfo != null && userInfo.isValid()) {
-                logger.info("Token validated successfully for user: {}");
+                logger.info("Token validated successfully for user: " + userInfo.getUid());
 
                 // Create authentication with user info
                 UsernamePasswordAuthenticationToken auth =
@@ -112,17 +112,17 @@ public class ExternalTokenValidationFilter extends OncePerRequestFilter {
 
                 filterChain.doFilter(request, response); // Continue chain
             } else {
-                logger.warn("Invalid token for request: {}");
+                logger.warn("Invalid token for request: " + requestURI);
                 sendUnauthorized(response, "Invalid or expired token");
                 return;
             }
 
         } catch (ResourceAccessException e) {
-            logger.error("Auth server timeout/unreachable for: {}");
+            logger.error("Auth server timeout/unreachable for: " + requestURI);
             sendServiceUnavailable(response, "Authentication service unavailable");
             return;
         } catch (Exception e) {
-            logger.error("Token validation error for: {}");
+            logger.error("Token validation error for: " + requestURI, e);
             sendInternalError(response, "Token validation failed");
             return;
         }
@@ -131,12 +131,12 @@ public class ExternalTokenValidationFilter extends OncePerRequestFilter {
     private boolean isPublicEndpoint(String requestURI, String method) {
         String lowerUri = requestURI.toLowerCase();
 
-        // 1. Health check endpoints ONLY
+        // 1. Health check endpoints
         if (requestURI.equals("/api/payments/health") && "GET".equals(method)) {
             return true;
         }
 
-        // 2. Swagger/OpenAPI documentation ONLY (consider disabling in production)
+        // 2. Swagger/OpenAPI documentation
         if (lowerUri.startsWith("/swagger-ui") ||
                 lowerUri.startsWith("/v3/api-docs") ||
                 lowerUri.equals("/swagger-ui.html") ||
@@ -144,19 +144,17 @@ public class ExternalTokenValidationFilter extends OncePerRequestFilter {
                 lowerUri.startsWith("/configuration/ui") ||
                 lowerUri.startsWith("/configuration/security") ||
                 lowerUri.startsWith("/webjars/")) {
-            logger.warn("Swagger access attempted in production: {}");
-            return true; // Consider returning false to disable Swagger in production
+            return true;
         }
 
-        // 3. Webhook endpoints (if required by external services)
+        // 3. Webhook endpoints - FIXED SECTION
         if (requestURI.startsWith("/api/webhook/")) {
-            if ("POST".equals(method)) {
-                // Consider adding webhook signature validation here
-                return true;
-            }
+            // Allow ALL HTTP methods for webhook endpoints (GET, POST, etc.)
+            logger.debug("Allowing webhook endpoint: " + requestURI);
+            return true;
         }
 
-        // 4. Actuator health (minimal info only)
+        // 4. Actuator health
         if (lowerUri.equals("/actuator/health") && "GET".equals(method)) {
             return true;
         }
@@ -210,10 +208,10 @@ public class ExternalTokenValidationFilter extends OncePerRequestFilter {
                             System.currentTimeMillis()
                     );
                 } else {
-                    logger.debug("Token invalid. Response: {}");
+                    logger.debug("Token invalid. Response: " + response.getBody());
                 }
             } else {
-                logger.warn("Auth server returned status: {}");
+                logger.warn("Auth server returned status: " + response.getStatusCode());
             }
 
         } catch (Exception e) {
