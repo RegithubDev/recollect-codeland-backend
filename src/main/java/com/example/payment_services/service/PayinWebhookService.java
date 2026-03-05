@@ -158,7 +158,7 @@ public class PayinWebhookService {
 
         // Find the payment transaction
         Optional<PaymentTransaction> transactionOpt =
-                paymentTransactionRepository.findByCfOrderId(cfPaymentId);
+                paymentTransactionRepository.findByOrderId(orderId);
 
         if (transactionOpt.isEmpty()) {
             log.error("Payment transaction not found for order: {}", orderId);
