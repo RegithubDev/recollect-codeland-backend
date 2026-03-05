@@ -1,14 +1,13 @@
 package com.example.payment_services.service;
 
+import com.example.payment_services.config.CashfreeConfig;
 import com.example.payment_services.entity.PayoutTransaction;
 import com.example.payment_services.repository.PayoutTransactionRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -27,46 +26,45 @@ public class PayoutWebhookService {
 
     private final PayoutTransactionRepository payoutTransactionRepository;
     private final ObjectMapper objectMapper;
-
-    @Value("${cashfree.payout.webhook.secret:}")
-    private String payoutWebhookSecret;
+    private final CashfreeConfig cashfreeConfig;
 
     /**
      * Enum for payout status
      */
-    public enum PayoutStatus {
-        PENDING("pending"),
-        PROCESSING("processing"),
-        SUCCESS("success"),
-        FAILED("failed"),
-        REVERSED("reversed"),
-        REJECTED("rejected");
-
-        private final String value;
-
-        PayoutStatus(String value) {
-            this.value = value;
-        }
-
-        public String getValue() {
-            return value;
-        }
-
-        public static PayoutStatus fromString(String status) {
-            for (PayoutStatus s : PayoutStatus.values()) {
-                if (s.value.equalsIgnoreCase(status)) {
-                    return s;
-                }
-            }
-            return PayoutStatus.PENDING;
-        }
-    }
+//    public enum PayoutStatus {
+//        PENDING("pending"),
+//        PROCESSING("processing"),
+//        SUCCESS("success"),
+//        FAILED("failed"),
+//        REVERSED("reversed"),
+//        REJECTED("rejected");
+//
+//        private final String value;
+//
+//        PayoutStatus(String value) {
+//            this.value = value;
+//        }
+//
+//        public String getValue() {
+//            return value;
+//        }
+//
+//        public static PayoutStatus fromString(String status) {
+//            for (PayoutStatus s : PayoutStatus.values()) {
+//                if (s.value.equalsIgnoreCase(status)) {
+//                    return s;
+//                }
+//            }
+//            return PayoutStatus.PENDING;
+//        }
+//    }
 
     /**
      * Verify Cashfree Payout webhook signature
      */
     public boolean verifyPayoutSignature(String rawBody, String signature) {
         try {
+            String payoutWebhookSecret = cashfreeConfig.getClientSecret();
             if (payoutWebhookSecret == null || payoutWebhookSecret.isEmpty()) {
                 log.error("Payout webhook secret not configured");
                 return false;
@@ -184,7 +182,6 @@ public class PayoutWebhookService {
     /**
      * Process payout webhook and update transaction
      */
-    @Transactional
     public void processPayoutWebhook(Map<String, Object> webhookData) {
         String eventType = (String) webhookData.get("eventType");
         String transferId = (String) webhookData.get("transferId");
@@ -197,7 +194,7 @@ public class PayoutWebhookService {
         // Find payout transaction by transferId or referenceId
         PayoutTransaction transaction = null;
 
-        if (transferId != null) {
+        if (transferId != null && !transferId.isEmpty()) {
             Optional<PayoutTransaction> byTransferId = payoutTransactionRepository
                     .findByTransferId(transferId);
             if (byTransferId.isPresent()) {
@@ -205,7 +202,7 @@ public class PayoutWebhookService {
             }
         }
 
-        if (transaction == null && referenceId != null) {
+        if (transaction == null && referenceId != null && !referenceId.isEmpty()) {
             Optional<PayoutTransaction> byReferenceId = payoutTransactionRepository
                     .findByReferenceId(referenceId);
             if (byReferenceId.isPresent()) {
@@ -214,6 +211,12 @@ public class PayoutWebhookService {
         }
 
         if (transaction == null) {
+            // For test webhooks without actual transactions, just log and return
+            if (isTestWebhook(webhookData)) {
+                log.info("Test payout webhook received - skipping transaction lookup");
+                return;
+            }
+
             String errorMsg = String.format("Payout transaction not found. TransferId: %s, ReferenceId: %s",
                     transferId, referenceId);
             log.error(errorMsg);
@@ -231,6 +234,20 @@ public class PayoutWebhookService {
 
         log.info("Payout webhook processed successfully. ID: {}, Status: {}",
                 transaction.getId(), transaction.getStatus());
+    }
+
+    /**
+     * Check if this is a test webhook
+     */
+    private boolean isTestWebhook(Map<String, Object> webhookData) {
+        String transferId = (String) webhookData.get("transferId");
+        String eventType = (String) webhookData.get("eventType");
+
+        // Check for test indicators
+        return (transferId != null && transferId.contains("test")) ||
+                (eventType != null && eventType.contains("TEST")) ||
+                webhookData.containsKey("test") ||
+                webhookData.isEmpty();
     }
 
     /**
@@ -561,6 +578,7 @@ public class PayoutWebhookService {
      */
     public Map<String, Object> getWebhookConfigStatus() {
         Map<String, Object> status = new HashMap<>();
+        String payoutWebhookSecret = cashfreeConfig.getClientSecret();
         status.put("webhookSecretConfigured",
                 payoutWebhookSecret != null && !payoutWebhookSecret.isEmpty());
         status.put("timestamp", LocalDateTime.now().toString());

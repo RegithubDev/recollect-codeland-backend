@@ -1,5 +1,6 @@
 package com.example.payment_services.service;
 
+import com.example.payment_services.config.CashfreeConfig;
 import com.example.payment_services.entity.PaymentTransaction;
 import com.example.payment_services.repository.PaymentTransactionRepository;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -28,15 +29,15 @@ public class PayinWebhookService {
 
     private final PaymentTransactionRepository paymentTransactionRepository;
     private final ObjectMapper objectMapper;
+    private final CashfreeConfig cashfreeConfig;
 
-    @Value("${cashfree.webhook.secret:}")
-    private String webhookSecret;
 
     /**
      * Verify webhook signature
      */
     public boolean verifyWebhookSignature(String rawBody, String signature, String timestamp) {
         try {
+            String webhookSecret = cashfreeConfig.getPgClientSecret();
             if (webhookSecret == null || webhookSecret.isEmpty()) {
                 log.error("Webhook secret not configured");
                 return false;
@@ -270,6 +271,7 @@ public class PayinWebhookService {
      */
     public Map<String, Object> getWebhookConfigStatus() {
         Map<String, Object> status = new HashMap<>();
+        String webhookSecret = cashfreeConfig.getPgClientSecret();
         status.put("webhookSecretConfigured", webhookSecret != null && !webhookSecret.isEmpty());
         status.put("timestamp", LocalDateTime.now().toString());
         status.put("service", "PayinWebhookService");
