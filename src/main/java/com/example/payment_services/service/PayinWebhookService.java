@@ -151,7 +151,7 @@ public class PayinWebhookService {
     public void processPaymentWebhook(Map<String, Object> webhookData) {
         String orderId = (String) webhookData.get("orderId");
         String paymentStatus = (String) webhookData.get("paymentStatus");
-        String cfPaymentId = (String) webhookData.get("cfPaymentId");
+//        String cfPaymentId = (String) webhookData.get("cfPaymentId");
         String paymentMessage = (String) webhookData.get("paymentMessage");
 
         log.info("Processing webhook for order: {}, status: {}", orderId, paymentStatus);
@@ -177,7 +177,14 @@ public class PayinWebhookService {
                 orderId, paymentStatus);
 
         // Trigger post-processing actions
-        triggerPostPaymentActions(orderId, paymentStatus, paymentMessage, transaction);
+        if(!transaction.getIsWalletTopUp()){
+            triggerPostPaymentActions(orderId, paymentStatus, paymentMessage, transaction);
+        }
+        else{
+            ledgerService.recordAddToWallet(transaction.getCfPaymentId(),transaction.getBankReference(),
+                    transaction.getCustomerDetails().getCustomerId(), orderId, transaction.getRealAmount(), getCurrentUserId());
+            log.info("Post-payment actions triggered for wallet Top Up successful order: {}", orderId);
+        }
     }
 
     /**

@@ -18,10 +18,10 @@ public final class TransactionNarration {
     public static final String WALLET_DEDUCTION = "Order Amount Debited From Wallet";
 
     //Top Up
-    public static final String WALLET_TOP_UP = "Added Money to Wallet";
+    public static final String WALLET_TOP_UP = "Wallet Money Added";
     // Withdrawal
-    public static final String WITHDRAWAL_INITIATED = "Wallet Withdrawal";
-    public static final String WITHDRAWAL_SUCCESS = "Successfully Withdrawn Wallet Amount";
+    public static final String WITHDRAWAL_INITIATED = "Wallet Money Withdrew";
+    public static final String WITHDRAWAL_SUCCESS = "Wallet Amount Withdrawn Successfully ";
     public static final String WITHDRAWAL_FAILED = "Wallet Amount Withdrawal Failed";
 
 }

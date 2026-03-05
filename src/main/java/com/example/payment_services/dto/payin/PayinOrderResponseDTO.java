@@ -56,6 +56,9 @@ public class PayinOrderResponseDTO {
     @JsonProperty("entity")
     private String entity;
 
+    @JsonProperty("is_wallet_top_up")
+    private String isWalletTopUp;
+
     @Data
     public static class CustomerDetails {
         @JsonProperty("customer_id")
