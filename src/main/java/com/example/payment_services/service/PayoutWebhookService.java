@@ -1,24 +1,25 @@
 package com.example.payment_services.service;
 
-import com.example.payment_services.config.CashfreeConfig;
 import com.example.payment_services.entity.PayoutTransaction;
 import com.example.payment_services.repository.PayoutTransactionRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
-import static com.example.payment_services.util.SecurityUtil.getCurrentUserId;
 
 @Service
 @RequiredArgsConstructor
@@ -27,52 +28,51 @@ public class PayoutWebhookService {
 
     private final PayoutTransactionRepository payoutTransactionRepository;
     private final ObjectMapper objectMapper;
-    private final CashfreeConfig cashfreeConfig;
-    private final LedgerService ledgerService;
+
+    @Value("${cashfree.payout.webhook.secret:}")
+    private String payoutWebhookSecret;
 
     /**
      * Enum for payout status
      */
-//    public enum PayoutStatus {
-//        PENDING("pending"),
-//        PROCESSING("processing"),
-//        SUCCESS("success"),
-//        FAILED("failed"),
-//        REVERSED("reversed"),
-//        REJECTED("rejected");
-//
-//        private final String value;
-//
-//        PayoutStatus(String value) {
-//            this.value = value;
-//        }
-//
-//        public String getValue() {
-//            return value;
-//        }
-//
-//        public static PayoutStatus fromString(String status) {
-//            for (PayoutStatus s : PayoutStatus.values()) {
-//                if (s.value.equalsIgnoreCase(status)) {
-//                    return s;
-//                }
-//            }
-//            return PayoutStatus.PENDING;
-//        }
-//    }
+    public enum PayoutStatus {
+        PENDING("pending"),
+        PROCESSING("processing"),
+        SUCCESS("success"),
+        FAILED("failed"),
+        REVERSED("reversed"),
+        REJECTED("rejected");
+
+        private final String value;
+
+        PayoutStatus(String value) {
+            this.value = value;
+        }
+
+        public String getValue() {
+            return value;
+        }
+
+        public static PayoutStatus fromString(String status) {
+            for (PayoutStatus s : PayoutStatus.values()) {
+                if (s.value.equalsIgnoreCase(status)) {
+                    return s;
+                }
+            }
+            return PayoutStatus.PENDING;
+        }
+    }
 
     /**
      * Verify Cashfree Payout webhook signature
      */
     public boolean verifyPayoutSignature(String rawBody, String signature) {
         try {
-            String payoutWebhookSecret = cashfreeConfig.getClientSecret();
             if (payoutWebhookSecret == null || payoutWebhookSecret.isEmpty()) {
                 log.error("Payout webhook secret not configured");
                 return false;
             }
 
-            // Cashfree Payout signature: HMAC_SHA256(rawBody)
             Mac sha256_HMAC = Mac.getInstance("HmacSHA256");
             SecretKeySpec secretKeySpec = new SecretKeySpec(
                     payoutWebhookSecret.getBytes(StandardCharsets.UTF_8),
@@ -93,83 +93,91 @@ public class PayoutWebhookService {
     }
 
     /**
-     * Parse Cashfree Payout webhook payload
-     * Sample payload structure:
-     * {
-     *   "type": "TRANSFER_SUCCESS",
-     *   "data": {
-     *     "transferId": "transfer_123456",
-     *     "referenceId": "ref_789012",
-     *     "utr": "UTRN123456789012",
-     *     "amount": "1000.00",
-     *     "status": "SUCCESS",
-     *     "processedOn": "2024-01-15T10:30:00+05:30",
-     *     "fees": "5.00",
-     *     "tax": "0.90",
-     *     "failureReason": null,
-     *     "beneficiaryDetails": {...}
-     *   }
-     * }
+     * Parse Cashfree Payout webhook payload with null safety
      */
     public Map<String, Object> parsePayoutWebhookPayload(String rawBody) throws Exception {
-        JsonNode rootNode = objectMapper.readTree(rawBody);
-
         Map<String, Object> parsedData = new HashMap<>();
 
-        // Extract event type
-        String eventType = rootNode.get("type").asText();
-        parsedData.put("eventType", eventType);
+        // Handle empty or test payload
+        if (rawBody == null || rawBody.trim().isEmpty()) {
+            log.info("Empty payout webhook payload - test request");
+            parsedData.put("isTest", true);
+            return parsedData;
+        }
+
+        JsonNode rootNode = objectMapper.readTree(rawBody);
+
+        // Check if this is a test webhook
+        if (isTestWebhook(rootNode)) {
+            log.info("Test payout webhook detected");
+            parsedData.put("isTest", true);
+            return parsedData;
+        }
+
+        // Extract event type with null check
+        if (rootNode.has("type") && !rootNode.get("type").isNull()) {
+            parsedData.put("eventType", rootNode.get("type").asText());
+        }
 
         // Extract event time if available
-        if (rootNode.has("eventTime")) {
+        if (rootNode.has("eventTime") && !rootNode.get("eventTime").isNull()) {
             parsedData.put("eventTime", rootNode.get("eventTime").asText());
         }
 
         // Extract data node
         JsonNode dataNode = rootNode.get("data");
-        if (dataNode != null) {
-            // Transfer details
-            if (dataNode.has("transferId")) {
+        if (dataNode != null && !dataNode.isNull()) {
+
+            // Transfer details with null checks
+            if (dataNode.has("transferId") && !dataNode.get("transferId").isNull()) {
                 parsedData.put("transferId", dataNode.get("transferId").asText());
             }
 
-            if (dataNode.has("referenceId")) {
+            if (dataNode.has("referenceId") && !dataNode.get("referenceId").isNull()) {
                 parsedData.put("referenceId", dataNode.get("referenceId").asText());
             }
 
-            if (dataNode.has("utr")) {
+            if (dataNode.has("utr") && !dataNode.get("utr").isNull()) {
                 parsedData.put("utr", dataNode.get("utr").asText());
             }
 
-            if (dataNode.has("amount")) {
-                parsedData.put("amount", new BigDecimal(dataNode.get("amount").asText()));
+            if (dataNode.has("amount") && !dataNode.get("amount").isNull()) {
+                try {
+                    parsedData.put("amount", new BigDecimal(dataNode.get("amount").asText()));
+                } catch (Exception e) {
+                    log.warn("Could not parse amount: {}", dataNode.get("amount").asText());
+                }
             }
 
-            if (dataNode.has("status")) {
+            if (dataNode.has("status") && !dataNode.get("status").isNull()) {
                 parsedData.put("status", dataNode.get("status").asText());
             }
 
-            if (dataNode.has("processedOn")) {
+            if (dataNode.has("processedOn") && !dataNode.get("processedOn").isNull()) {
                 parsedData.put("processedOn", dataNode.get("processedOn").asText());
             }
 
-            if (dataNode.has("fees")) {
-                parsedData.put("fees", new BigDecimal(dataNode.get("fees").asText()));
+            if (dataNode.has("fees") && !dataNode.get("fees").isNull()) {
+                try {
+                    parsedData.put("fees", new BigDecimal(dataNode.get("fees").asText()));
+                } catch (Exception e) {
+                    log.warn("Could not parse fees");
+                }
             }
 
-            if (dataNode.has("tax")) {
-                parsedData.put("tax", new BigDecimal(dataNode.get("tax").asText()));
+            if (dataNode.has("tax") && !dataNode.get("tax").isNull()) {
+                try {
+                    parsedData.put("tax", new BigDecimal(dataNode.get("tax").asText()));
+                } catch (Exception e) {
+                    log.warn("Could not parse tax");
+                }
             }
 
-            if (dataNode.has("failureReason")) {
+            if (dataNode.has("failureReason") && !dataNode.get("failureReason").isNull()) {
                 parsedData.put("failureReason", dataNode.get("failureReason").asText());
             }
 
-            if (dataNode.has("beneficiaryDetails")) {
-                parsedData.put("beneficiaryDetails", dataNode.get("beneficiaryDetails").toString());
-            }
-
-            if (dataNode.has("remarks")) {
+            if (dataNode.has("remarks") && !dataNode.get("remarks").isNull()) {
                 parsedData.put("remarks", dataNode.get("remarks").asText());
             }
         }
@@ -182,13 +190,58 @@ public class PayoutWebhookService {
     }
 
     /**
+     * Check if webhook is a test
+     */
+    private boolean isTestWebhook(JsonNode rootNode) {
+        // Check for test indicators in the payload
+        if (rootNode.has("test") || rootNode.has("isTest")) {
+            return true;
+        }
+
+        // Check event type for test indicators
+        if (rootNode.has("type")) {
+            String type = rootNode.get("type").asText();
+            if (type.contains("TEST") || type.contains("test")) {
+                return true;
+            }
+        }
+
+        // Check data for test indicators
+        JsonNode dataNode = rootNode.get("data");
+        if (dataNode != null) {
+            if (dataNode.has("transferId")) {
+                String transferId = dataNode.get("transferId").asText();
+                if (transferId.contains("test") || transferId.contains("TEST")) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Process payout webhook and update transaction
      */
+    @Transactional
     public void processPayoutWebhook(Map<String, Object> webhookData) {
+        // Check if this is a test webhook
+        if (webhookData.containsKey("isTest") && (Boolean) webhookData.get("isTest")) {
+            log.info("Test payout webhook received - skipping processing");
+            return;
+        }
+
         String eventType = (String) webhookData.get("eventType");
         String transferId = (String) webhookData.get("transferId");
         String referenceId = (String) webhookData.get("referenceId");
         String status = (String) webhookData.get("status");
+
+        // If no transferId or referenceId, this might be a test
+        if ((transferId == null || transferId.isEmpty()) &&
+                (referenceId == null || referenceId.isEmpty())) {
+            log.info("Payout webhook without identifiers - treating as test");
+            return;
+        }
 
         log.info("Processing payout webhook - Event: {}, Transfer: {}, Status: {}",
                 eventType, transferId, status);
@@ -213,16 +266,9 @@ public class PayoutWebhookService {
         }
 
         if (transaction == null) {
-            // For test webhooks without actual transactions, just log and return
-            if (isTestWebhook(webhookData)) {
-                log.info("Test payout webhook received - skipping transaction lookup");
-                return;
-            }
-
-            String errorMsg = String.format("Payout transaction not found. TransferId: %s, ReferenceId: %s",
+            log.warn("Payout transaction not found for test webhook. TransferId: {}, ReferenceId: {}",
                     transferId, referenceId);
-            log.error(errorMsg);
-            throw new IllegalArgumentException(errorMsg);
+            return; // Don't throw exception for test webhooks
         }
 
         // Update transaction based on event type
@@ -236,20 +282,6 @@ public class PayoutWebhookService {
 
         log.info("Payout webhook processed successfully. ID: {}, Status: {}",
                 transaction.getId(), transaction.getStatus());
-    }
-
-    /**
-     * Check if this is a test webhook
-     */
-    private boolean isTestWebhook(Map<String, Object> webhookData) {
-        String transferId = (String) webhookData.get("transferId");
-        String eventType = (String) webhookData.get("eventType");
-
-        // Check for test indicators
-        return (transferId != null && transferId.contains("test")) ||
-                (eventType != null && eventType.contains("TEST")) ||
-                webhookData.containsKey("test") ||
-                webhookData.isEmpty();
     }
 
     /**
@@ -280,10 +312,6 @@ public class PayoutWebhookService {
                     String utr = (String) webhookData.get("utr");
                     // transaction.setUtr(utr); // If you add this field
                 }
-
-                if (webhookData.containsKey("processedOn")) {
-                    // You might want to store processed time
-                }
                 break;
 
             case "TRANSFER_FAILED":
@@ -307,20 +335,8 @@ public class PayoutWebhookService {
                 transaction.setStatusDescription("Transfer is being processed");
                 break;
 
-            case "BENEFICIARY_ADDED":
-                // Handle beneficiary addition
-                log.info("Beneficiary added event received");
-                if (webhookData.containsKey("beneficiaryDetails")) {
-                    transaction.setBeneficiaryDetails(
-                            (String) webhookData.get("beneficiaryDetails")
-                    );
-                }
-                break;
-
-            case "BENEFICIARY_VERIFICATION_FAILED":
-                transaction.setStatusCode("BENEFICIARY_FAILED");
-                transaction.setStatusDescription("Beneficiary verification failed");
-                break;
+            default:
+                log.warn("Unknown event type: {}", eventType);
         }
 
         // Update fees and tax if available
@@ -331,36 +347,16 @@ public class PayoutWebhookService {
         if (webhookData.containsKey("tax")) {
             transaction.setTax((BigDecimal) webhookData.get("tax"));
         }
-
-        // Store webhook metadata if needed
-        if (webhookData.containsKey("rawPayload")) {
-            // You might want to store webhook payload for debugging
-            String existingMetadata = transaction.getMetadata();
-            Map<String, Object> metadata = new HashMap<>();
-
-            if (existingMetadata != null && !existingMetadata.isEmpty()) {
-                try {
-                    metadata = objectMapper.readValue(existingMetadata, Map.class);
-                } catch (Exception e) {
-                    log.warn("Could not parse existing metadata");
-                }
-            }
-
-            metadata.put("lastWebhook", webhookData.get("eventType"));
-            metadata.put("lastWebhookTime", LocalDateTime.now().toString());
-
-            try {
-                transaction.setMetadata(objectMapper.writeValueAsString(metadata));
-            } catch (Exception e) {
-                log.error("Could not serialize metadata", e);
-            }
-        }
     }
 
     /**
      * Map Cashfree status to your entity status
      */
     private String mapToEntityStatus(String eventType, String cashfreeStatus) {
+        if (eventType == null) {
+            return "pending";
+        }
+
         switch (eventType) {
             case "TRANSFER_SUCCESS":
                 return "success";
@@ -370,8 +366,6 @@ public class PayoutWebhookService {
                 return "reversed";
             case "TRANSFER_PROCESSING":
                 return "processing";
-            case "BENEFICIARY_VERIFICATION_FAILED":
-                return "rejected";
             default:
                 // Map from Cashfree status string
                 if (cashfreeStatus != null) {
@@ -404,21 +398,20 @@ public class PayoutWebhookService {
         try {
             switch (eventType) {
                 case "TRANSFER_SUCCESS":
-                    ledgerService.recordWithdrawalProcessedSuccess(transaction.getTransferId(), transaction.getCfTransferId(),
-                             transaction.getCustomerId(), transaction.getTransferId(), transaction.getTransferAmount(),  getCurrentUserId());
-                    break;
-                case "TRANSFER_FAILED", "TRANSFER_REVERSED":
-                    ledgerService.recordWithdrawalFailed(transaction.getTransferId(), transaction.getCfTransferId(),
-                            transaction.getCustomerId(), transaction.getTransferId(), transaction.getTransferAmount(),  getCurrentUserId());
+                    sendPayoutSuccessNotification(transaction);
+                    updateAccountingForSuccessfulPayout(transaction);
                     break;
 
-                case "BENEFICIARY_ADDED":
-                    updateBeneficiaryStatus(transaction);
+                case "TRANSFER_FAILED":
+                    sendPayoutFailureNotification(transaction);
                     break;
 
-                case "BENEFICIARY_VERIFICATION_FAILED":
-                    notifyBeneficiaryVerificationFailure(transaction);
+                case "TRANSFER_REVERSED":
+                    handlePayoutReversal(transaction);
                     break;
+
+                default:
+                    log.debug("No post-payout actions for event: {}", eventType);
             }
         } catch (Exception e) {
             log.error("Error in post-payout actions for transaction ID: {}",
@@ -426,120 +419,26 @@ public class PayoutWebhookService {
         }
     }
 
-    // ========== HELPER METHODS (Implement based on your business logic) ==========
+    // ========== HELPER METHODS ==========
 
     private void sendPayoutSuccessNotification(PayoutTransaction transaction) {
-        try {
-            log.info("Sending payout success notification for transfer: {}",
-                    transaction.getTransferId());
-
-            // Implement notification logic:
-            // 1. Send email to customer
-            // 2. Send SMS
-            // 3. Send in-app notification
-            // 4. Update notification table
-
-            // Example:
-            // notificationService.sendEmail(
-            //     transaction.getCustomerId(),
-            //     "Payout Successful",
-            //     String.format("Your payout of ₹%s has been processed successfully. UTR: %s",
-            //         transaction.getTransferAmount(),
-            //         transaction.getUtr())
-            // );
-
-        } catch (Exception e) {
-            log.error("Failed to send payout success notification", e);
-        }
+        log.info("Sending payout success notification for transfer: {}", transaction.getTransferId());
+        // Implement your notification logic here
     }
 
     private void updateAccountingForSuccessfulPayout(PayoutTransaction transaction) {
-        try {
-            log.info("Updating accounting for successful payout: {}",
-                    transaction.getTransferId());
-
-            // Implement accounting logic:
-            // 1. Update ledger entries
-            // 2. Update balance sheets
-            // 3. Record transaction in accounting system
-
-            // Example:
-            // accountingService.recordPayout(
-            //     transaction.getTransferAmount(),
-            //     transaction.getFees(),
-            //     transaction.getTax(),
-            //     transaction.getTransferId()
-            // );
-
-        } catch (Exception e) {
-            log.error("Failed to update accounting for payout", e);
-        }
-    }
-
-    private void updateUserWallet(PayoutTransaction transaction, String status) {
-        try {
-            log.info("Updating user wallet for payout: {}, Status: {}",
-                    transaction.getTransferId(), status);
-
-            // If payout failed or reversed, add back amount to user's wallet
-            if ("FAILED".equals(status) || "REVERSED".equals(status)) {
-                // walletService.creditBalance(
-                //     transaction.getCustomerId(),
-                //     transaction.getTransferAmount(),
-                //     "Payout reversal - " + transaction.getTransferId()
-                // );
-            }
-
-        } catch (Exception e) {
-            log.error("Failed to update user wallet for payout", e);
-        }
+        log.info("Updating accounting for successful payout: {}", transaction.getTransferId());
+        // Implement your accounting logic here
     }
 
     private void sendPayoutFailureNotification(PayoutTransaction transaction) {
-        try {
-            log.info("Sending payout failure notification for transfer: {}",
-                    transaction.getTransferId());
-
-            // notificationService.sendEmail(
-            //     transaction.getCustomerId(),
-            //     "Payout Failed",
-            //     String.format("Your payout of ₹%s has failed. Reason: %s",
-            //         transaction.getTransferAmount(),
-            //         transaction.getStatusDescription())
-            // );
-
-        } catch (Exception e) {
-            log.error("Failed to send payout failure notification", e);
-        }
-    }
-
-    private void logPayoutFailure(PayoutTransaction transaction) {
-        // Log to analytics database
-        log.warn("Payout failed - ID: {}, Customer: {}, Amount: {}, Reason: {}",
-                transaction.getTransferId(),
-                transaction.getCustomerId(),
-                transaction.getTransferAmount(),
-                transaction.getStatusDescription());
+        log.info("Sending payout failure notification for transfer: {}", transaction.getTransferId());
+        // Implement your notification logic here
     }
 
     private void handlePayoutReversal(PayoutTransaction transaction) {
         log.info("Handling payout reversal for: {}", transaction.getTransferId());
-        // Additional reversal logic if needed
-    }
-
-    private void updateBeneficiaryStatus(PayoutTransaction transaction) {
-        log.info("Updating beneficiary status for payout: {}", transaction.getTransferId());
-        // Update beneficiary verification status in your system
-    }
-
-    private void notifyBeneficiaryVerificationFailure(PayoutTransaction transaction) {
-        log.warn("Beneficiary verification failed for payout: {}", transaction.getTransferId());
-        // Notify admin team
-        // adminNotificationService.notify(
-        //     "Beneficiary Verification Failed",
-        //     String.format("Beneficiary verification failed for transfer: %s",
-        //         transaction.getTransferId())
-        // );
+        // Implement your reversal logic here
     }
 
     /**
@@ -562,7 +461,6 @@ public class PayoutWebhookService {
      */
     public Map<String, Object> getWebhookConfigStatus() {
         Map<String, Object> status = new HashMap<>();
-        String payoutWebhookSecret = cashfreeConfig.getClientSecret();
         status.put("webhookSecretConfigured",
                 payoutWebhookSecret != null && !payoutWebhookSecret.isEmpty());
         status.put("timestamp", LocalDateTime.now().toString());
@@ -571,9 +469,7 @@ public class PayoutWebhookService {
                 "TRANSFER_SUCCESS",
                 "TRANSFER_FAILED",
                 "TRANSFER_REVERSED",
-                "TRANSFER_PROCESSING",
-                "BENEFICIARY_ADDED",
-                "BENEFICIARY_VERIFICATION_FAILED"
+                "TRANSFER_PROCESSING"
         });
         return status;
     }
