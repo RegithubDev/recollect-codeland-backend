@@ -13,6 +13,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -29,19 +30,19 @@ public class PayoutWebhookController {
     @PostMapping("/cashfree/payout")
     public ResponseEntity<?> handleCashfreePayoutWebhook(HttpServletRequest request) {
         String rawBody = null;
-        Map<String, Object> response = new HashMap<>();
 
         try {
             // 1. Read request body
             rawBody = readRequestBody(request);
 
-            // 2. Handle empty body (test requests)
-            if (rawBody == null || rawBody.trim().isEmpty()) {
-                log.info("Received empty payout webhook request - test ping");
-                response.put("status", "success");
-                response.put("message", "Payout webhook endpoint is ready");
-                response.put("timestamp", LocalDateTime.now().toString());
-                return ResponseEntity.ok(response);
+            // Log request details for debugging
+            log.info("Payout webhook received - Method: {}, Content-Type: {}",
+                    request.getMethod(), request.getContentType());
+
+            // 2. Handle test requests - Return simple OK without processing
+            if (isTestRequest(request, rawBody)) {
+                log.info("Test payout webhook detected - returning OK");
+                return ResponseEntity.ok("OK");
             }
 
             log.debug("Cashfree payout webhook received, length: {} chars", rawBody.length());
@@ -50,99 +51,91 @@ public class PayoutWebhookController {
             String signature = request.getHeader("x-cf-signature");
             String timestamp = request.getHeader("x-cf-timestamp");
 
-            // 4. For test requests without signatures, still accept
-            if (signature == null || signature.isEmpty()) {
-                log.info("Received payout webhook without signature headers - processing as test");
-
-                // Try to parse and process anyway if possible
-                try {
-                    Map<String, Object> webhookData = payoutWebhookService.parsePayoutWebhookPayload(rawBody);
-                    payoutWebhookService.processPayoutWebhook(webhookData);
-
-                    response.put("status", "success");
-                    response.put("message", "Payout webhook processed successfully (test mode)");
-                    response.put("transfer_id", webhookData.get("transferId"));
-                    response.put("event_type", webhookData.get("eventType"));
-                } catch (Exception e) {
-                    log.warn("Could not process test payout webhook data: {}", e.getMessage());
-                    response.put("status", "success");
-                    response.put("message", "Payout webhook received but processing skipped (test mode)");
+            // 4. Verify signature for real requests
+            if (signature != null && !signature.isEmpty()) {
+                if (!payoutWebhookService.verifyPayoutSignature(rawBody, signature)) {
+                    log.error("Invalid payout webhook signature");
+                    return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid signature");
                 }
-
-                response.put("timestamp", LocalDateTime.now().toString());
-                return ResponseEntity.ok(response);
+            } else {
+                log.warn("Missing signature header - treating as test");
+                return ResponseEntity.ok("OK");
             }
 
-            // 5. Verify signature (Cashfree Payout has different signature format)
-            if (!payoutWebhookService.verifyPayoutSignature(rawBody, signature)) {
-                response.put("status", "error");
-                response.put("message", "Invalid payout webhook signature");
-                response.put("timestamp", LocalDateTime.now().toString());
-                log.error("Invalid payout webhook signature");
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
-            }
-
-            // 6. Parse and process payout webhook
+            // 5. Parse and process payout webhook
             Map<String, Object> webhookData = payoutWebhookService.parsePayoutWebhookPayload(rawBody);
+
+            // Check if it's a test webhook from the service
+            if (webhookData.containsKey("isTest") && (Boolean) webhookData.get("isTest")) {
+                log.info("Test webhook detected by service");
+                return ResponseEntity.ok("OK");
+            }
+
+            // Process real webhook
             payoutWebhookService.processPayoutWebhook(webhookData);
 
-            String transferId = (String) webhookData.get("transferId");
-            String eventType = (String) webhookData.get("eventType");
-
-            // 7. Return success response
-            response.put("status", "success");
-            response.put("message", "Payout webhook processed successfully");
-            response.put("transfer_id", transferId);
-            response.put("event_type", eventType);
-            response.put("timestamp", LocalDateTime.now().toString());
-
-            log.info("Payout webhook processed successfully: {} - {}", transferId, eventType);
-            return ResponseEntity.ok(response);
+            log.info("Payout webhook processed successfully: {}", webhookData.get("transferId"));
+            return ResponseEntity.ok("OK");
 
         } catch (Exception e) {
-            log.error("Error processing payout webhook", e);
-            response.put("status", "error");
-            response.put("message", "Error processing payout webhook");
-            response.put("error", e.getMessage());
-            response.put("timestamp", LocalDateTime.now().toString());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+            log.error("Error processing payout webhook: {}", e.getMessage());
+            // Always return OK to prevent retries
+            return ResponseEntity.ok("OK");
         }
+    }
+
+    /**
+     * Check if this is a test request
+     */
+    private boolean isTestRequest(HttpServletRequest request, String rawBody) {
+        // Empty body test
+        if (rawBody == null || rawBody.trim().isEmpty()) {
+            return true;
+        }
+
+        // Check User-Agent header
+        String userAgent = request.getHeader("User-Agent");
+        if (userAgent != null && (userAgent.contains("test") || userAgent.contains("Test"))) {
+            return true;
+        }
+
+        // Check if body is simple test string
+        String trimmedBody = rawBody.trim();
+        if (trimmedBody.equals("test") || trimmedBody.equals("ping") || trimmedBody.equals("{}")) {
+            return true;
+        }
+
+        // Check if body contains test indicators
+        if (rawBody.contains("\"test\"") || rawBody.contains("\"isTest\"")) {
+            return true;
+        }
+
+        return false;
     }
 
     @Operation(summary = "Handle GET requests for payout webhook testing")
     @GetMapping("/cashfree/payout")
-    public ResponseEntity<?> handleCashfreePayoutWebhookGet() {
-        Map<String, Object> response = new HashMap<>();
-        response.put("status", "success");
-        response.put("message", "Payout webhook endpoint is ready");
-        response.put("method", "GET");
-        response.put("service", "PayoutWebhookService");
-        response.put("config", payoutWebhookService.getWebhookConfigStatus());
-        response.put("timestamp", LocalDateTime.now().toString());
-        return ResponseEntity.ok(response);
+    public ResponseEntity<String> handleCashfreePayoutWebhookGet() {
+        log.info("GET request received on payout webhook endpoint");
+        return ResponseEntity.ok("OK");
     }
 
     @Operation(summary = "Payout Webhook Health Check")
     @GetMapping("/cashfree/payout/health")
-    public ResponseEntity<?> payoutWebhookHealthCheck() {
+    public ResponseEntity<Map<String, Object>> payoutWebhookHealthCheck() {
         Map<String, Object> response = new HashMap<>();
         response.put("status", "healthy");
         response.put("service", "PayoutWebhookService");
-        response.put("timestamp", LocalDateTime.now().toString());
+        response.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_DATE_TIME));
         response.put("config", payoutWebhookService.getWebhookConfigStatus());
         return ResponseEntity.ok(response);
     }
 
     @Operation(summary = "Test endpoint for payout webhook")
     @PostMapping("/cashfree/payout/test")
-    public ResponseEntity<?> testPayoutWebhook(@RequestBody(required = false) String testPayload) {
-        Map<String, Object> response = new HashMap<>();
-        response.put("status", "success");
-        response.put("message", "Payout test endpoint working");
-        response.put("payload_received", testPayload != null && !testPayload.isEmpty());
-        response.put("config", payoutWebhookService.getWebhookConfigStatus());
-        response.put("timestamp", LocalDateTime.now().toString());
-        return ResponseEntity.ok(response);
+    public ResponseEntity<String> testPayoutWebhook() {
+        log.info("Test endpoint called");
+        return ResponseEntity.ok("OK");
     }
 
     private String readRequestBody(HttpServletRequest request) throws IOException {
