@@ -15,10 +15,7 @@ import javax.crypto.spec.SecretKeySpec;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -81,7 +78,7 @@ public class PayoutWebhookService {
 
             log.info("Verifying payout signature with secret length: {}", payoutWebhookSecret.length());
             log.debug("Raw body: {}", rawBody);
-            log.debug("Received signature: {}", signature);
+            log.debug("Received signature from header: {}", signature);
 
             // Parse JSON to Map
             Map<String, Object> jsonMap = objectMapper.readValue(
@@ -89,33 +86,16 @@ public class PayoutWebhookService {
                     new TypeReference<Map<String, Object>>() {}
             );
 
-            // Get signature from map (as per reference code)
-            String signatureFromPayload = jsonMap.get("signature").toString();
-            log.debug("Signature from payload: {}", signatureFromPayload);
+            log.info("Payload keys: {}", jsonMap.keySet());
 
-            // Remove signature field (as per documentation)
+            // Remove signature field if present
             jsonMap.remove("signature");
 
-            // Sort map by keys (as per documentation)
-            Map<String, Object> sortedMap = jsonMap.entrySet()
-                    .stream()
-                    .sorted(Map.Entry.comparingByKey())
-                    .collect(Collectors.toMap(
-                            Map.Entry::getKey,
-                            Map.Entry::getValue,
-                            (oldValue, newValue) -> oldValue,
-                            LinkedHashMap::new
-                    ));
+            // Sort map by keys and recursively process values
+            String postDataString = buildStringFromMap(jsonMap);
 
-            // EXACTLY as per reference code: iterate through keys and get values
-            String postDataString = sortedMap.keySet().stream()
-                    .map(key -> {
-                        Object value = sortedMap.get(key);
-                        return value != null ? value.toString() : "";
-                    })
-                    .collect(Collectors.joining());
-
-            log.debug("Concatenated string for hashing: {}", postDataString);
+            log.debug("Concatenated string length: {}", postDataString.length());
+            log.debug("Concatenated string: {}", postDataString);
 
             // Generate HMAC-SHA256
             Mac sha256HMAC = Mac.getInstance("HmacSHA256");
@@ -125,31 +105,20 @@ public class PayoutWebhookService {
             );
             sha256HMAC.init(secretKey);
 
-            // Use getBytes() without charset as in reference code
-            byte[] hashBytes = sha256HMAC.doFinal(postDataString.getBytes());
+            byte[] hashBytes = sha256HMAC.doFinal(postDataString.getBytes(StandardCharsets.UTF_8));
+            String computedSignature = java.util.Base64.getEncoder().encodeToString(hashBytes);
 
-            // Use Apache Commons Base64 if available, otherwise Java's Base64
-            String computedSignature;
-            try {
-                // Try Apache Commons Base64 (as in reference)
-                computedSignature = org.apache.commons.codec.binary.Base64.encodeBase64String(hashBytes);
-            } catch (NoClassDefFoundError e) {
-                // Fallback to Java's Base64
-                computedSignature = java.util.Base64.getEncoder().encodeToString(hashBytes);
-            }
+            log.info("Computed signature: {}", computedSignature);
+            log.info("Received signature: {}", signature);
 
-            log.debug("Computed signature: {}", computedSignature);
-
-            // Compare with the signature from payload (not the header)
-            boolean isValid = computedSignature.equals(signatureFromPayload);
+            boolean isValid = computedSignature.equals(signature);
 
             if (isValid) {
                 log.info("Payout signature verification successful");
             } else {
                 log.warn("Payout signature verification failed");
                 log.warn("Computed: {}", computedSignature);
-                log.warn("Received from payload: {}", signatureFromPayload);
-                log.warn("Received from header: {}", signature);
+                log.warn("Received: {}", signature);
             }
 
             return isValid;
@@ -160,6 +129,46 @@ public class PayoutWebhookService {
         }
     }
 
+    /**
+     * Recursively builds a string from a map by:
+     * 1. Sorting keys alphabetically
+     * 2. Concatenating all values (recursively for nested maps)
+     * 3. No quotes, no formatting - just raw values
+     */
+    private String buildStringFromMap(Map<String, Object> map) {
+        if (map == null) return "";
+
+        return map.entrySet()
+                .stream()
+                .sorted(Map.Entry.comparingByKey())
+                .map(entry -> valueToString(entry.getValue()))
+                .collect(Collectors.joining());
+    }
+
+    /**
+     * Converts any value to string, handling nested maps and lists
+     */
+    private String valueToString(Object value) {
+        if (value == null) return "";
+
+        if (value instanceof Map) {
+            // Recursively process nested maps
+            @SuppressWarnings("unchecked")
+            Map<String, Object> nestedMap = (Map<String, Object>) value;
+            return buildStringFromMap(nestedMap);
+        }
+
+        if (value instanceof List) {
+            // Process lists
+            List<?> list = (List<?>) value;
+            return list.stream()
+                    .map(this::valueToString)
+                    .collect(Collectors.joining());
+        }
+
+        // For primitive types, just return the string value
+        return value.toString();
+    }
     /**
      * Parse Cashfree Payout webhook payload
      * Supports all webhook events:
