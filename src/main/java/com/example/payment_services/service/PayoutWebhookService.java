@@ -1,5 +1,6 @@
 package com.example.payment_services.service;
 
+import com.example.payment_services.config.CashfreeConfig;
 import com.example.payment_services.entity.PayoutTransaction;
 import com.example.payment_services.repository.PayoutTransactionRepository;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -28,9 +29,7 @@ public class PayoutWebhookService {
 
     private final PayoutTransactionRepository payoutTransactionRepository;
     private final ObjectMapper objectMapper;
-
-    @Value("${cashfree.payout.webhook.secret:}")
-    private String payoutWebhookSecret;
+    private final CashfreeConfig cashfreeConfig;
 
     /**
      * Enum for payout status
@@ -68,6 +67,7 @@ public class PayoutWebhookService {
      */
     public boolean verifyPayoutSignature(String rawBody, String signature) {
         try {
+            String payoutWebhookSecret = cashfreeConfig.getClientSecret();
             if (payoutWebhookSecret == null || payoutWebhookSecret.isEmpty()) {
                 log.error("Payout webhook secret not configured");
                 return false;
@@ -533,6 +533,7 @@ public class PayoutWebhookService {
      * Get webhook configuration status
      */
     public Map<String, Object> getWebhookConfigStatus() {
+        String payoutWebhookSecret = cashfreeConfig.getClientSecret();
         Map<String, Object> status = new HashMap<>();
         status.put("webhookSecretConfigured",
                 payoutWebhookSecret != null && !payoutWebhookSecret.isEmpty());
