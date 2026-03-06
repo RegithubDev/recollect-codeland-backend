@@ -35,7 +35,7 @@ public class PaymentDataService {
         // Handle orderAmount - check for null and set to 0 if null
         Double orderAmountValue = orderResponse.getOrderAmount();
         transaction.setOrderAmount(orderAmountValue != null ? BigDecimal.valueOf(orderAmountValue) : BigDecimal.ZERO);
-
+        transaction.setIsWalletTopUp(orderResponse.getIsWalletTopUp());
         // Handle realAmount - check for null and set to 0 if null
         Double realAmountValue = orderResponse.getRealAmount();
         transaction.setRealAmount(realAmountValue != null ? BigDecimal.valueOf(realAmountValue) : BigDecimal.ZERO);

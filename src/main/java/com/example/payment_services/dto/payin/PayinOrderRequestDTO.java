@@ -34,7 +34,7 @@ public class PayinOrderRequestDTO {
     private Object orderTags;
 
     @JsonProperty("is_wallet_top_up")
-    private String isWalletTopUp;
+    private Boolean isWalletTopUp;
 
 
     @Data
