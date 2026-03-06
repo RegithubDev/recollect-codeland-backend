@@ -92,6 +92,10 @@ public class PayoutWebhookService {
                     new TypeReference<Map<String, Object>>() {}
             );
 
+            // Get signature from map (as per reference code)
+            String signatureFromPayload = jsonMap.get("signature").toString();
+            log.debug("Signature from payload: {}", signatureFromPayload);
+
             // Remove signature field (as per documentation)
             jsonMap.remove("signature");
 
@@ -106,15 +110,17 @@ public class PayoutWebhookService {
                             LinkedHashMap::new
                     ));
 
-            // Concatenate all values in sorted order (as per documentation)
-            String postDataString = sortedMap.values()
-                    .stream()
-                    .map(value -> value != null ? value.toString() : "")
+            // EXACTLY as per reference code: iterate through keys and get values
+            String postDataString = sortedMap.keySet().stream()
+                    .map(key -> {
+                        Object value = sortedMap.get(key);
+                        return value != null ? value.toString() : "";
+                    })
                     .collect(Collectors.joining());
 
             log.debug("Concatenated string for hashing: {}", postDataString);
 
-            // Generate HMAC-SHA256 and base64 encode (as per documentation)
+            // Generate HMAC-SHA256
             Mac sha256HMAC = Mac.getInstance("HmacSHA256");
             SecretKeySpec secretKey = new SecretKeySpec(
                     payoutWebhookSecret.getBytes(StandardCharsets.UTF_8),
@@ -122,19 +128,31 @@ public class PayoutWebhookService {
             );
             sha256HMAC.init(secretKey);
 
-            byte[] hashBytes = sha256HMAC.doFinal(postDataString.getBytes(StandardCharsets.UTF_8));
-            String computedSignature = Base64.getEncoder().encodeToString(hashBytes);
+            // Use getBytes() without charset as in reference code
+            byte[] hashBytes = sha256HMAC.doFinal(postDataString.getBytes());
+
+            // Use Apache Commons Base64 if available, otherwise Java's Base64
+            String computedSignature;
+            try {
+                // Try Apache Commons Base64 (as in reference)
+                computedSignature = org.apache.commons.codec.binary.Base64.encodeBase64String(hashBytes);
+            } catch (NoClassDefFoundError e) {
+                // Fallback to Java's Base64
+                computedSignature = java.util.Base64.getEncoder().encodeToString(hashBytes);
+            }
 
             log.debug("Computed signature: {}", computedSignature);
 
-            boolean isValid = computedSignature.equals(signature);
+            // Compare with the signature from payload (not the header)
+            boolean isValid = computedSignature.equals(signatureFromPayload);
 
             if (isValid) {
                 log.info("Payout signature verification successful");
             } else {
                 log.warn("Payout signature verification failed");
                 log.warn("Computed: {}", computedSignature);
-                log.warn("Received: {}", signature);
+                log.warn("Received from payload: {}", signatureFromPayload);
+                log.warn("Received from header: {}", signature);
             }
 
             return isValid;
