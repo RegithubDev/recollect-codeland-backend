@@ -27,6 +27,9 @@ public class CashfreeTransferRequest {
     @JsonProperty("transfer_label")
     private String transferLabel;
 
+    @JsonProperty("customer_id")
+    private String customerId;
+
     @Data
     public static class BeneficiaryDetails {
         @JsonProperty("beneficiary_id")

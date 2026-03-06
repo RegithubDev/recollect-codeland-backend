@@ -12,6 +12,9 @@ public class TransferStatusResponseDTO {
     @JsonProperty("cf_transfer_id")
     private String cfTransferId;
 
+    @JsonProperty("reference_id")
+    private String referenceId;
+
     @JsonProperty("status")
     private String status;
 
@@ -41,6 +44,18 @@ public class TransferStatusResponseDTO {
 
     @JsonProperty("updated_on")
     private String updatedOn;
+
+    @JsonProperty("utr")
+    private String utr;
+
+    @JsonProperty("fees")
+    private BigDecimal fees;
+
+    @JsonProperty("tax")
+    private BigDecimal tax;
+
+    @JsonProperty("customer_id")
+    private String customerId;
 
     @Data
     public static class BeneficiaryDetails {

@@ -16,10 +16,10 @@ public class PayoutTransaction {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "transfer_id", unique = true, nullable = false)
+    @Column(name = "transfer_id", unique = true)
     private String transferId;
 
-    @Column(name = "cf_transfer_id", unique = true, nullable = false)
+    @Column(name = "cf_transfer_id", unique = true)
     private String cfTransferId;
 
     @Column(name = "customer_id", nullable = false)
