@@ -3,7 +3,7 @@ package com.example.payment_services.service;
 import com.example.payment_services.config.CashfreeConfig;
 import com.example.payment_services.entity.PayoutTransaction;
 import com.example.payment_services.repository.PayoutTransactionRepository;
-import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,8 +19,10 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -40,7 +42,8 @@ public class PayoutWebhookService {
         SUCCESS("success"),
         FAILED("failed"),
         REVERSED("reversed"),
-        REJECTED("rejected");
+        REJECTED("rejected"),
+        ACKNOWLEDGED("acknowledged");
 
         private final String value;
 
@@ -64,6 +67,12 @@ public class PayoutWebhookService {
 
     /**
      * Verify Cashfree Payout webhook signature
+     * Based on Cashfree V1 webhook documentation:
+     * 1. Get all POST parameters except 'signature'
+     * 2. Sort the array based on keys
+     * 3. Concatenate all values in sorted order
+     * 4. Encrypt using SHA-256 and base64 encode
+     * 5. Compare with received signature
      */
     public boolean verifyPayoutSignature(String rawBody, String signature) {
         try {
@@ -73,24 +82,59 @@ public class PayoutWebhookService {
                 return false;
             }
 
-            Mac sha256_HMAC = Mac.getInstance("HmacSHA256");
-            SecretKeySpec secretKeySpec = new SecretKeySpec(
+            log.info("Verifying payout signature with secret length: {}", payoutWebhookSecret.length());
+            log.debug("Raw body: {}", rawBody);
+            log.debug("Received signature: {}", signature);
+
+            // Parse JSON to Map
+            Map<String, Object> jsonMap = objectMapper.readValue(
+                    rawBody,
+                    new TypeReference<Map<String, Object>>() {}
+            );
+
+            // Remove signature field (as per documentation)
+            jsonMap.remove("signature");
+
+            // Sort map by keys (as per documentation)
+            Map<String, Object> sortedMap = jsonMap.entrySet()
+                    .stream()
+                    .sorted(Map.Entry.comparingByKey())
+                    .collect(Collectors.toMap(
+                            Map.Entry::getKey,
+                            Map.Entry::getValue,
+                            (oldValue, newValue) -> oldValue,
+                            LinkedHashMap::new
+                    ));
+
+            // Concatenate all values in sorted order (as per documentation)
+            String postDataString = sortedMap.values()
+                    .stream()
+                    .map(value -> value != null ? value.toString() : "")
+                    .collect(Collectors.joining());
+
+            log.debug("Concatenated string for hashing: {}", postDataString);
+
+            // Generate HMAC-SHA256 and base64 encode (as per documentation)
+            Mac sha256HMAC = Mac.getInstance("HmacSHA256");
+            SecretKeySpec secretKey = new SecretKeySpec(
                     payoutWebhookSecret.getBytes(StandardCharsets.UTF_8),
                     "HmacSHA256"
             );
-            sha256_HMAC.init(secretKeySpec);
+            sha256HMAC.init(secretKey);
 
-            String computedSignature = Base64.getEncoder().encodeToString(
-                    sha256_HMAC.doFinal(rawBody.getBytes(StandardCharsets.UTF_8))
-            );
+            byte[] hashBytes = sha256HMAC.doFinal(postDataString.getBytes(StandardCharsets.UTF_8));
+            String computedSignature = Base64.getEncoder().encodeToString(hashBytes);
 
-            boolean isValid = constantTimeEquals(computedSignature, signature);
+            log.debug("Computed signature: {}", computedSignature);
+
+            boolean isValid = computedSignature.equals(signature);
 
             if (isValid) {
-                log.info("Signature verification successful");
+                log.info("✅ Payout signature verification successful");
             } else {
-                log.warn("Signature verification failed");
-                log.debug("Computed: {}, Received: {}", computedSignature, signature);
+                log.warn("❌ Payout signature verification failed");
+                log.warn("Computed: {}", computedSignature);
+                log.warn("Received: {}", signature);
             }
 
             return isValid;
@@ -102,177 +146,269 @@ public class PayoutWebhookService {
     }
 
     /**
-     * Parse Cashfree Payout webhook payload - UPDATED to match actual Cashfree format
+     * Parse Cashfree Payout webhook payload
+     * Supports all webhook events:
+     * - TRANSFER_SUCCESS
+     * - TRANSFER_FAILED
+     * - TRANSFER_REVERSED
+     * - CREDIT_CONFIRMATION
+     * - TRANSFER_ACKNOWLEDGED
+     * - TRANSFER_REJECTED
+     * - BENEFICIARY_INCIDENT
+     * - LOW_BALANCE_ALERT
+     * - BULK_TRANSFER_REJECTED
      */
     public Map<String, Object> parsePayoutWebhookPayload(String rawBody) throws Exception {
         Map<String, Object> parsedData = new HashMap<>();
 
-        // Handle empty or test payload
         if (rawBody == null || rawBody.trim().isEmpty()) {
             log.info("Empty payout webhook payload - test request");
             parsedData.put("isTest", true);
             return parsedData;
         }
 
-        JsonNode rootNode = objectMapper.readTree(rawBody);
+        Map<String, Object> rootMap = objectMapper.readValue(
+                rawBody,
+                new TypeReference<Map<String, Object>>() {}
+        );
 
-        // Check if this is a test webhook
-        if (isTestWebhook(rootNode)) {
-            log.info("Test payout webhook detected");
-            parsedData.put("isTest", true);
-            return parsedData;
+        log.info("Raw webhook data: {}", rootMap);
+
+        // Extract signature for logging
+        if (rootMap.containsKey("signature")) {
+            parsedData.put("signature", rootMap.get("signature").toString());
         }
 
-        log.info("Parsing payout webhook payload");
-
-        // Extract event type (using "type" field)
-        if (rootNode.has("type") && !rootNode.get("type").isNull()) {
-            String eventType = rootNode.get("type").asText();
+        // Extract event type (common for all webhooks)
+        if (rootMap.containsKey("event")) {
+            String eventType = rootMap.get("event").toString();
             parsedData.put("eventType", eventType);
             log.info("Event type: {}", eventType);
         }
 
-        // Extract event time (using "event_time" field)
-        if (rootNode.has("event_time") && !rootNode.get("event_time").isNull()) {
-            parsedData.put("eventTime", rootNode.get("event_time").asText());
+        // Extract event time if present
+        if (rootMap.containsKey("eventTime")) {
+            parsedData.put("eventTime", rootMap.get("eventTime").toString());
         }
 
-        // Extract data node
-        JsonNode dataNode = rootNode.get("data");
-        if (dataNode != null && !dataNode.isNull()) {
+        // Process based on event type
+        String eventType = parsedData.getOrDefault("eventType", "").toString();
 
-            // Transfer ID (transfer_id)
-            if (dataNode.has("transfer_id") && !dataNode.get("transfer_id").isNull()) {
-                String transferId = dataNode.get("transfer_id").asText();
-                parsedData.put("transferId", transferId);
-                log.info("Transfer ID: {}", transferId);
-            }
+        switch (eventType) {
+            case "TRANSFER_SUCCESS":
+                parseTransferSuccess(rootMap, parsedData);
+                break;
 
-            // CF Transfer ID (cf_transfer_id)
-            if (dataNode.has("cf_transfer_id") && !dataNode.get("cf_transfer_id").isNull()) {
-                parsedData.put("cfTransferId", dataNode.get("cf_transfer_id").asText());
-            }
+            case "TRANSFER_FAILED":
+                parseTransferFailed(rootMap, parsedData);
+                break;
 
-            // Status
-            if (dataNode.has("status") && !dataNode.get("status").isNull()) {
-                parsedData.put("status", dataNode.get("status").asText());
-            }
+            case "TRANSFER_REVERSED":
+                parseTransferReversed(rootMap, parsedData);
+                break;
 
-            // Status Code
-            if (dataNode.has("status_code") && !dataNode.get("status_code").isNull()) {
-                parsedData.put("statusCode", dataNode.get("status_code").asText());
-            }
+            case "TRANSFER_ACKNOWLEDGED":
+                parseTransferAcknowledged(rootMap, parsedData);
+                break;
 
-            // Status Description
-            if (dataNode.has("status_description") && !dataNode.get("status_description").isNull()) {
-                parsedData.put("statusDescription", dataNode.get("status_description").asText());
-            }
+            case "TRANSFER_REJECTED":
+                parseTransferRejected(rootMap, parsedData);
+                break;
 
-            // Transfer Amount
-            if (dataNode.has("transfer_amount") && !dataNode.get("transfer_amount").isNull()) {
-                try {
-                    BigDecimal amount = new BigDecimal(dataNode.get("transfer_amount").asText());
-                    parsedData.put("amount", amount);
-                    log.info("Amount: {}", amount);
-                } catch (Exception e) {
-                    log.warn("Could not parse transfer_amount: {}", dataNode.get("transfer_amount").asText());
-                }
-            }
+            case "CREDIT_CONFIRMATION":
+                parseCreditConfirmation(rootMap, parsedData);
+                break;
 
-            // Transfer UTR
-            if (dataNode.has("transfer_utr") && !dataNode.get("transfer_utr").isNull()) {
-                parsedData.put("utr", dataNode.get("transfer_utr").asText());
-                log.info("UTR: {}", dataNode.get("transfer_utr").asText());
-            }
+            case "LOW_BALANCE_ALERT":
+                parseLowBalanceAlert(rootMap, parsedData);
+                break;
 
-            // Transfer Service Charge (fees)
-            if (dataNode.has("transfer_service_charge") && !dataNode.get("transfer_service_charge").isNull()) {
-                try {
-                    BigDecimal fees = new BigDecimal(dataNode.get("transfer_service_charge").asText());
-                    parsedData.put("fees", fees);
-                    log.info("Fees: {}", fees);
-                } catch (Exception e) {
-                    log.warn("Could not parse transfer_service_charge");
-                }
-            }
-
-            // Transfer Service Tax
-            if (dataNode.has("transfer_service_tax") && !dataNode.get("transfer_service_tax").isNull()) {
-                try {
-                    BigDecimal tax = new BigDecimal(dataNode.get("transfer_service_tax").asText());
-                    parsedData.put("tax", tax);
-                    log.info("Tax: {}", tax);
-                } catch (Exception e) {
-                    log.warn("Could not parse transfer_service_tax");
-                }
-            }
-
-            // Transfer Mode
-            if (dataNode.has("transfer_mode") && !dataNode.get("transfer_mode").isNull()) {
-                parsedData.put("transferMode", dataNode.get("transfer_mode").asText());
-            }
-
-            // Beneficiary Details
-            if (dataNode.has("beneficiary_details") && !dataNode.get("beneficiary_details").isNull()) {
-                JsonNode benNode = dataNode.get("beneficiary_details");
-                if (benNode.has("beneficiary_id") && !benNode.get("beneficiary_id").isNull()) {
-                    parsedData.put("beneficiaryId", benNode.get("beneficiary_id").asText());
-                }
-
-                // Store full beneficiary details as JSON for metadata
-                try {
-                    parsedData.put("beneficiaryDetails", objectMapper.writeValueAsString(benNode));
-                } catch (Exception e) {
-                    log.warn("Could not serialize beneficiary details");
-                }
-            }
-
-            // Added on / Updated on
-            if (dataNode.has("added_on") && !dataNode.get("added_on").isNull()) {
-                parsedData.put("addedOn", dataNode.get("added_on").asText());
-            }
-
-            if (dataNode.has("updated_on") && !dataNode.get("updated_on").isNull()) {
-                parsedData.put("updatedOn", dataNode.get("updated_on").asText());
-            }
+            default:
+                log.warn("Unknown event type: {}", eventType);
+                // Try to extract common fields anyway
+                extractCommonFields(rootMap, parsedData);
         }
 
-        // Store raw payload for debugging
+        // Store raw payload
         parsedData.put("rawPayload", rawBody);
 
         log.info("Parsed payout webhook data: {}", parsedData);
         return parsedData;
     }
 
-    /**
-     * Check if webhook is a test
-     */
-    private boolean isTestWebhook(JsonNode rootNode) {
-        // Check for test indicators in the payload
-        if (rootNode.has("test") || rootNode.has("isTest")) {
-            return true;
+    private void parseTransferSuccess(Map<String, Object> rootMap, Map<String, Object> parsedData) {
+        // TRANSFER_SUCCESS parameters:
+        // - transferId: Id of the transfer passed by the merchant
+        // - referenceId: Id of the transfer generated by Cashfree Payments
+        // - acknowledged: Flag if beneficiary bank has acknowledged the transfer
+        // - eventTime: Transfer initiation time
+        // - utr: Unique transaction reference number provided by the bank
+
+        if (rootMap.containsKey("transferId")) {
+            parsedData.put("transferId", rootMap.get("transferId").toString());
+        }
+        if (rootMap.containsKey("referenceId")) {
+            parsedData.put("referenceId", rootMap.get("referenceId").toString());
+            parsedData.put("cfTransferId", rootMap.get("referenceId").toString()); // Map to cfTransferId
+        }
+        if (rootMap.containsKey("acknowledged")) {
+            parsedData.put("acknowledged", rootMap.get("acknowledged"));
+        }
+        if (rootMap.containsKey("utr")) {
+            parsedData.put("utr", rootMap.get("utr").toString());
         }
 
-        // Check event type for test indicators
-        if (rootNode.has("type")) {
-            String type = rootNode.get("type").asText();
-            if (type.contains("TEST") || type.contains("test")) {
-                return true;
+        // Set status based on acknowledged flag
+        Object ack = rootMap.get("acknowledged");
+        if (ack != null) {
+            if ("1".equals(ack.toString()) || Boolean.TRUE.equals(ack)) {
+                parsedData.put("status", "SUCCESS");
+                parsedData.put("statusDescription", "Transfer completed and credited to beneficiary");
+            } else {
+                parsedData.put("status", "PROCESSING");
+                parsedData.put("statusDescription", "Transfer initiated, awaiting bank acknowledgment");
+            }
+        } else {
+            parsedData.put("status", "SUCCESS");
+        }
+    }
+
+    private void parseTransferFailed(Map<String, Object> rootMap, Map<String, Object> parsedData) {
+        // TRANSFER_FAILED parameters:
+        // - transferId: Id of the transfer passed by the merchant
+        // - referenceId: Id of the transfer generated by Cashfree Payments
+        // - reason: Reason for failure
+
+        if (rootMap.containsKey("transferId")) {
+            parsedData.put("transferId", rootMap.get("transferId").toString());
+        }
+        if (rootMap.containsKey("referenceId")) {
+            parsedData.put("referenceId", rootMap.get("referenceId").toString());
+            parsedData.put("cfTransferId", rootMap.get("referenceId").toString());
+        }
+        if (rootMap.containsKey("reason")) {
+            parsedData.put("failureReason", rootMap.get("reason").toString());
+        }
+        parsedData.put("status", "FAILED");
+        parsedData.put("statusDescription", "Transfer failed: " + rootMap.getOrDefault("reason", "Unknown reason"));
+    }
+
+    private void parseTransferReversed(Map<String, Object> rootMap, Map<String, Object> parsedData) {
+        // TRANSFER_REVERSED parameters:
+        // - transferId: Id of the transfer passed by the merchant
+        // - referenceId: Id of the transfer generated by Cashfree Payments
+        // - eventTime: Time at which the transfer was reversed
+        // - reason: Reason for reversal
+
+        if (rootMap.containsKey("transferId")) {
+            parsedData.put("transferId", rootMap.get("transferId").toString());
+        }
+        if (rootMap.containsKey("referenceId")) {
+            parsedData.put("referenceId", rootMap.get("referenceId").toString());
+            parsedData.put("cfTransferId", rootMap.get("referenceId").toString());
+        }
+        if (rootMap.containsKey("reason")) {
+            parsedData.put("failureReason", rootMap.get("reason").toString());
+        }
+        parsedData.put("status", "REVERSED");
+        parsedData.put("statusDescription", "Transfer reversed: " + rootMap.getOrDefault("reason", "Unknown reason"));
+    }
+
+    private void parseTransferAcknowledged(Map<String, Object> rootMap, Map<String, Object> parsedData) {
+        // TRANSFER_ACKNOWLEDGED parameters:
+        // - transferId: Id of the transfer passed by the merchant
+        // - referenceId: Id of the transfer generated by Cashfree Payments
+        // - acknowledged: Flag if beneficiary bank acknowledges the transfer
+
+        if (rootMap.containsKey("transferId")) {
+            parsedData.put("transferId", rootMap.get("transferId").toString());
+        }
+        if (rootMap.containsKey("referenceId")) {
+            parsedData.put("referenceId", rootMap.get("referenceId").toString());
+            parsedData.put("cfTransferId", rootMap.get("referenceId").toString());
+        }
+        if (rootMap.containsKey("acknowledged")) {
+            parsedData.put("acknowledged", rootMap.get("acknowledged"));
+        }
+        parsedData.put("status", "ACKNOWLEDGED");
+        parsedData.put("statusDescription", "Bank has acknowledged the transfer");
+    }
+
+    private void parseTransferRejected(Map<String, Object> rootMap, Map<String, Object> parsedData) {
+        // TRANSFER_REJECTED parameters:
+        // - transferId: Id of the transfer passed by the merchant
+        // - referenceId: Id of the transfer generated by Cashfree Payments
+        // - reason: Reason for rejection
+
+        if (rootMap.containsKey("transferId")) {
+            parsedData.put("transferId", rootMap.get("transferId").toString());
+        }
+        if (rootMap.containsKey("referenceId")) {
+            parsedData.put("referenceId", rootMap.get("referenceId").toString());
+            parsedData.put("cfTransferId", rootMap.get("referenceId").toString());
+        }
+        if (rootMap.containsKey("reason")) {
+            parsedData.put("failureReason", rootMap.get("reason").toString());
+        }
+        parsedData.put("status", "REJECTED");
+        parsedData.put("statusDescription", "Transfer rejected: " + rootMap.getOrDefault("reason", "Unknown reason"));
+    }
+
+    private void parseCreditConfirmation(Map<String, Object> rootMap, Map<String, Object> parsedData) {
+        // CREDIT_CONFIRMATION parameters:
+        // - ledgerBalance: The overall balance of ledger
+        // - amount: Amount deposited
+        // - utr: Unique transaction reference number
+
+        if (rootMap.containsKey("amount")) {
+            try {
+                parsedData.put("amount", new BigDecimal(rootMap.get("amount").toString()));
+            } catch (Exception e) {
+                log.warn("Could not parse amount");
             }
         }
+        if (rootMap.containsKey("ledgerBalance")) {
+            parsedData.put("ledgerBalance", rootMap.get("ledgerBalance").toString());
+        }
+        if (rootMap.containsKey("utr")) {
+            parsedData.put("utr", rootMap.get("utr").toString());
+        }
+        parsedData.put("status", "SUCCESS");
+    }
 
-        // Check data for test indicators
-        JsonNode dataNode = rootNode.get("data");
-        if (dataNode != null) {
-            if (dataNode.has("transfer_id")) {
-                String transferId = dataNode.get("transfer_id").asText();
-                if (transferId.contains("test") || transferId.contains("TEST")) {
-                    return true;
-                }
+    private void parseLowBalanceAlert(Map<String, Object> rootMap, Map<String, Object> parsedData) {
+        // LOW_BALANCE_ALERT parameters:
+        // - currentBalance: The current balance of the beneficiary account
+        // - alertTime: Alert initiation time
+
+        if (rootMap.containsKey("currentBalance")) {
+            try {
+                parsedData.put("currentBalance", new BigDecimal(rootMap.get("currentBalance").toString()));
+            } catch (Exception e) {
+                log.warn("Could not parse currentBalance");
             }
         }
+        if (rootMap.containsKey("alertTime")) {
+            parsedData.put("alertTime", rootMap.get("alertTime").toString());
+        }
+        parsedData.put("status", "LOW_BALANCE");
+    }
 
-        return false;
+    private void extractCommonFields(Map<String, Object> rootMap, Map<String, Object> parsedData) {
+        // Try to extract common fields if event type is unknown
+        if (rootMap.containsKey("transferId")) {
+            parsedData.put("transferId", rootMap.get("transferId").toString());
+        }
+        if (rootMap.containsKey("referenceId")) {
+            parsedData.put("referenceId", rootMap.get("referenceId").toString());
+            parsedData.put("cfTransferId", rootMap.get("referenceId").toString());
+        }
+        if (rootMap.containsKey("utr")) {
+            parsedData.put("utr", rootMap.get("utr").toString());
+        }
+        if (rootMap.containsKey("reason")) {
+            parsedData.put("failureReason", rootMap.get("reason").toString());
+        }
     }
 
     /**
@@ -290,53 +426,75 @@ public class PayoutWebhookService {
 
         String eventType = (String) webhookData.get("eventType");
         String transferId = (String) webhookData.get("transferId");
+        String referenceId = (String) webhookData.get("referenceId");
         String cfTransferId = (String) webhookData.get("cfTransferId");
         String status = (String) webhookData.get("status");
+        String utr = (String) webhookData.get("utr");
+        String failureReason = (String) webhookData.get("failureReason");
 
         log.info("Event Type: {}", eventType);
         log.info("Transfer ID: {}", transferId);
+        log.info("Reference ID: {}", referenceId);
         log.info("CF Transfer ID: {}", cfTransferId);
         log.info("Status: {}", status);
+        log.info("UTR: {}", utr);
 
-        // If no transferId, this might be a test
-        if (transferId == null || transferId.isEmpty()) {
-            log.warn("Payout webhook without transfer_id - treating as test");
+        // Find payout transaction by various identifiers
+        PayoutTransaction transaction = null;
+
+        // Try by transferId (merchant's ID)
+        if (transferId != null && !transferId.isEmpty()) {
+            log.info("Looking for transaction by transferId: {}", transferId);
+            Optional<PayoutTransaction> byTransferId = payoutTransactionRepository
+                    .findByTransferId(transferId);
+            if (byTransferId.isPresent()) {
+                transaction = byTransferId.get();
+                log.info("✅ Found transaction by transferId");
+            }
+        }
+
+        // Try by referenceId (Cashfree's ID)
+        if (transaction == null && referenceId != null && !referenceId.isEmpty()) {
+            log.info("Looking for transaction by referenceId: {}", referenceId);
+            Optional<PayoutTransaction> byReferenceId = payoutTransactionRepository
+                    .findByReferenceId(referenceId);
+            if (byReferenceId.isPresent()) {
+                transaction = byReferenceId.get();
+                log.info("✅ Found transaction by referenceId");
+                // Set cfTransferId if not already set
+                if (transaction.getCfTransferId() == null) {
+                    transaction.setCfTransferId(referenceId);
+                }
+            }
+        }
+
+        // Try by cfTransferId
+        if (transaction == null && cfTransferId != null && !cfTransferId.isEmpty()) {
+            log.info("Looking for transaction by cfTransferId: {}", cfTransferId);
+            Optional<PayoutTransaction> byCfTransferId = payoutTransactionRepository
+                    .findByCfTransferId(cfTransferId);
+            if (byCfTransferId.isPresent()) {
+                transaction = byCfTransferId.get();
+                log.info("✅ Found transaction by cfTransferId");
+            }
+        }
+
+        if (transaction == null) {
+            log.error("❌ Payout transaction not found for any identifier");
+            log.error("Searched by - transferId: {}, referenceId: {}, cfTransferId: {}",
+                    transferId, referenceId, cfTransferId);
             return;
         }
 
-        // Find payout transaction by transferId
-        log.info("Looking for transaction with transferId: {}", transferId);
-        Optional<PayoutTransaction> transactionOpt = payoutTransactionRepository.findByTransferId(transferId);
-
-        if (transactionOpt.isEmpty()) {
-            log.error("Payout transaction not found for transferId: {}", transferId);
-
-            // Try to find by cfTransferId as fallback
-            if (cfTransferId != null && !cfTransferId.isEmpty()) {
-                log.info("Trying to find by cfTransferId: {}", cfTransferId);
-                transactionOpt = payoutTransactionRepository.findByCfTransferId(cfTransferId);
-            }
-
-            if (transactionOpt.isEmpty()) {
-                log.error("Payout transaction not found for cfTransferId either");
-                return;
-            }
-        }
-
-        PayoutTransaction transaction = transactionOpt.get();
-        log.info("Found transaction - ID: {}, Current Status: {}",
+        log.info("✅ Found transaction - ID: {}, Current Status: {}",
                 transaction.getId(), transaction.getStatus());
 
-        // Log before update
-        log.info("Before update - Status: {}, StatusCode: {}",
-                transaction.getStatus(), transaction.getStatusCode());
-
-        // Update transaction based on event type
+        // Update transaction
         updatePayoutTransaction(transaction, webhookData);
 
         // Save the updated transaction
         PayoutTransaction saved = payoutTransactionRepository.save(transaction);
-        log.info("Transaction saved with ID: {}, New Status: {}", saved.getId(), saved.getStatus());
+        log.info("✅ Transaction saved with ID: {}, New Status: {}", saved.getId(), saved.getStatus());
 
         // Trigger post-processing actions
         triggerPostPayoutActions(transaction, eventType);
@@ -352,14 +510,14 @@ public class PayoutWebhookService {
 
         String eventType = (String) webhookData.get("eventType");
         String status = (String) webhookData.get("status");
+        String referenceId = (String) webhookData.get("referenceId");
         String cfTransferId = (String) webhookData.get("cfTransferId");
         String utr = (String) webhookData.get("utr");
-        String statusCode = (String) webhookData.get("statusCode");
+        String failureReason = (String) webhookData.get("failureReason");
         String statusDescription = (String) webhookData.get("statusDescription");
-        String transferMode = (String) webhookData.get("transferMode");
 
-        log.info("Updating transaction {} with event: {}, status: {}",
-                transaction.getTransferId(), eventType, status);
+        log.info("Updating transaction {} with event: {}",
+                transaction.getTransferId(), eventType);
 
         // Update basic fields
         transaction.setUpdatedAt(LocalDateTime.now());
@@ -367,48 +525,39 @@ public class PayoutWebhookService {
         // Set CF Transfer ID if available and not already set
         if (cfTransferId != null && !cfTransferId.isEmpty() && transaction.getCfTransferId() == null) {
             transaction.setCfTransferId(cfTransferId);
-            log.info("Set cfTransferId: {}", cfTransferId);
         }
 
-        // Map Cashfree status to your entity status
+        // Set reference ID if available
+        if (referenceId != null && !referenceId.isEmpty() && transaction.getReferenceId() == null) {
+            transaction.setReferenceId(referenceId);
+        }
+
+        // Map status
         String entityStatus = mapToEntityStatus(eventType, status);
         transaction.setStatus(entityStatus);
 
-        // Set status code and description
-        if (statusCode != null) {
-            transaction.setStatusCode(statusCode);
-        }
-
+        // Set status description
         if (statusDescription != null) {
             transaction.setStatusDescription(statusDescription);
+        } else {
+            transaction.setStatusDescription(getStatusDescription(eventType, status, failureReason));
         }
 
-        // Update specific fields based on event type
-        if ("TRANSFER_SUCCESS".equals(eventType)) {
-            if (utr != null) {
-                // Store UTR in reference_id or metadata
-                transaction.setReferenceId(utr);
-                log.info("Set UTR/ReferenceId: {}", utr);
-            }
-        }
-
-        // Update transfer mode if provided
-        if (transferMode != null) {
-            transaction.setTransferMode(transferMode);
+        // Set UTR if available
+        if (utr != null && !utr.isEmpty()) {
+            transaction.setReferenceId(utr); // Store UTR in referenceId
         }
 
         // Update fees and tax if available
         if (webhookData.containsKey("fees") && webhookData.get("fees") != null) {
             transaction.setFees((BigDecimal) webhookData.get("fees"));
-            log.info("Set fees: {}", webhookData.get("fees"));
         }
 
         if (webhookData.containsKey("tax") && webhookData.get("tax") != null) {
             transaction.setTax((BigDecimal) webhookData.get("tax"));
-            log.info("Set tax: {}", webhookData.get("tax"));
         }
 
-        // Build metadata with additional info
+        // Build metadata
         try {
             Map<String, Object> metadata = new HashMap<>();
             metadata.put("eventType", eventType);
@@ -423,9 +572,9 @@ public class PayoutWebhookService {
     }
 
     /**
-     * Map Cashfree status to your entity status
+     * Map Cashfree event to entity status
      */
-    private String mapToEntityStatus(String eventType, String cashfreeStatus) {
+    private String mapToEntityStatus(String eventType, String status) {
         if (eventType == null) {
             return "pending";
         }
@@ -437,30 +586,42 @@ public class PayoutWebhookService {
                 return "failed";
             case "TRANSFER_REVERSED":
                 return "reversed";
-            case "TRANSFER_PROCESSING":
-                return "processing";
+            case "TRANSFER_ACKNOWLEDGED":
+                return "acknowledged";
+            case "TRANSFER_REJECTED":
+                return "rejected";
+            case "CREDIT_CONFIRMATION":
+                return "success";
+            case "LOW_BALANCE_ALERT":
+                return "low_balance";
             default:
-                // Map from Cashfree status string
-                if (cashfreeStatus != null) {
-                    switch (cashfreeStatus.toUpperCase()) {
-                        case "SUCCESS":
-                        case "SUCCESSFUL":
-                            return "success";
-                        case "FAILED":
-                        case "FAILURE":
-                            return "failed";
-                        case "PENDING":
-                        case "PROCESSING":
-                            return "processing";
-                        case "REVERSED":
-                            return "reversed";
-                        case "REJECTED":
-                            return "rejected";
-                        default:
-                            return "pending";
-                    }
-                }
-                return "pending";
+                return status != null ? status.toLowerCase() : "pending";
+        }
+    }
+
+    /**
+     * Get human-readable status description
+     */
+    private String getStatusDescription(String eventType, String status, String failureReason) {
+        if (eventType == null) return "Unknown status";
+
+        switch (eventType) {
+            case "TRANSFER_SUCCESS":
+                return "Transfer completed successfully";
+            case "TRANSFER_FAILED":
+                return "Transfer failed: " + (failureReason != null ? failureReason : "Unknown reason");
+            case "TRANSFER_REVERSED":
+                return "Transfer reversed: " + (failureReason != null ? failureReason : "Unknown reason");
+            case "TRANSFER_ACKNOWLEDGED":
+                return "Bank acknowledged the transfer";
+            case "TRANSFER_REJECTED":
+                return "Transfer rejected: " + (failureReason != null ? failureReason : "Unknown reason");
+            case "CREDIT_CONFIRMATION":
+                return "Credit confirmed";
+            case "LOW_BALANCE_ALERT":
+                return "Low balance alert";
+            default:
+                return status != null ? status : "Unknown";
         }
     }
 
@@ -471,16 +632,22 @@ public class PayoutWebhookService {
         try {
             switch (eventType) {
                 case "TRANSFER_SUCCESS":
+                case "CREDIT_CONFIRMATION":
                     sendPayoutSuccessNotification(transaction);
                     updateAccountingForSuccessfulPayout(transaction);
                     break;
 
                 case "TRANSFER_FAILED":
+                case "TRANSFER_REJECTED":
                     sendPayoutFailureNotification(transaction);
                     break;
 
                 case "TRANSFER_REVERSED":
                     handlePayoutReversal(transaction);
+                    break;
+
+                case "LOW_BALANCE_ALERT":
+                    handleLowBalanceAlert(transaction);
                     break;
 
                 default:
@@ -514,6 +681,13 @@ public class PayoutWebhookService {
         // Implement your reversal logic here
     }
 
+    private void handleLowBalanceAlert(PayoutTransaction transaction) {
+        log.warn("Low balance alert for account. Current balance in transaction: {}",
+                transaction.getTransferAmount());
+        // Implement your low balance handling logic here
+        // e.g., notify admin, trigger recharge, etc.
+    }
+
     /**
      * Constant-time string comparison (prevents timing attacks)
      */
@@ -543,7 +717,10 @@ public class PayoutWebhookService {
                 "TRANSFER_SUCCESS",
                 "TRANSFER_FAILED",
                 "TRANSFER_REVERSED",
-                "TRANSFER_PROCESSING"
+                "TRANSFER_ACKNOWLEDGED",
+                "TRANSFER_REJECTED",
+                "CREDIT_CONFIRMATION",
+                "LOW_BALANCE_ALERT"
         });
         return status;
     }
