@@ -176,12 +176,12 @@ public class WalletController {
             payoutRequest.setContactId(request.getUserId());
             payoutRequest.setAmount(request.getAmount());
 
-            PayoutResponseDTO result = walletService.addToWallet(payoutRequest);
+//            PayoutResponseDTO result = walletService.addToWallet(payoutRequest);
             return ResponseEntity.ok(Map.of(
                     "message", "Money added to wallet successfully",
                     "amount", request.getAmount(),
                     "userId", request.getUserId(),
-                    "transactionId", result.getReferenceId()
+                    "transactionId", request.getReferenceId()
             ));
         } catch (RuntimeException e) {
             log.warn("Add to wallet failed: {}", e.getMessage());

@@ -176,9 +176,7 @@ public class PayinWebhookService {
         log.info("Successfully updated payment status for order: {} to {}",
                 orderId, paymentStatus);
 
-        Boolean isWalletTopUp = transaction.getIsWalletTopUp();
-
-        if (isWalletTopUp != null && isWalletTopUp) {
+        if (Boolean.TRUE.equals(transaction.getIsWalletTopUp())) {
             ledgerService.recordAddToWallet(
                     transaction.getCfPaymentId(),
                     transaction.getBankReference(),

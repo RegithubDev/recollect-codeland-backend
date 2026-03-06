@@ -33,6 +33,10 @@ public class PayinOrderRequestDTO {
     @JsonProperty("order_tags")
     private Object orderTags;
 
+    @JsonProperty("is_wallet_top_up")
+    private String isWalletTopUp;
+
+
     @Data
     public static class CustomerDetails {
         @JsonProperty("customer_id")
