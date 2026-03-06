@@ -39,6 +39,7 @@ public class PayoutWebhookController {
             log.info("Payout webhook received - Method: {}, Content-Type: {}",
                     request.getMethod(), request.getContentType());
 
+            log.info("Webhook rawbody {}", rawBody);
             // 2. Handle test requests - Return simple OK without processing
             if (isTestRequest(request, rawBody)) {
                 log.info("Test payout webhook detected - returning OK");
