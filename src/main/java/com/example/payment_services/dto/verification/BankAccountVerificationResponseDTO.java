@@ -2,9 +2,15 @@ package com.example.payment_services.dto.verification;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
+import java.util.Map;
 
 @Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class BankAccountVerificationResponseDTO {
+
     @JsonProperty("reference_id")
     private Long referenceId;
 
@@ -14,12 +20,20 @@ public class BankAccountVerificationResponseDTO {
     @JsonProperty("bank_name")
     private String bankName;
 
+    @JsonProperty("utr")
+    private String utr;
+
+    @JsonProperty("city")
     private String city;
+
+    @JsonProperty("branch")
     private String branch;
-    private Long micr;
+
+    @JsonProperty("micr")
+    private String micr;
 
     @JsonProperty("name_match_score")
-    private String nameMatchScore;
+    private Double nameMatchScore;
 
     @JsonProperty("name_match_result")
     private String nameMatchResult;
@@ -30,29 +44,24 @@ public class BankAccountVerificationResponseDTO {
     @JsonProperty("account_status_code")
     private String accountStatusCode;
 
-    private String utr;
-
     @JsonProperty("ifsc_details")
-    private IfscDetails ifscDetails;
+    private Map<String, Object> ifscDetails;
 
-    @Data
-    public static class IfscDetails {
-        private String bank;
-        private String ifsc;
+    // Additional fields for error responses
+    private String type;
+    private String code;
+    private String message;
+    private Map<String, Object> error;
 
-        @JsonProperty("ifsc_subcode")
-        private String ifscSubcode;
+    // Helper methods
+    public boolean isValid() {
+        return "VALID".equals(accountStatus) ||
+                "ACCOUNT_IS_VALID".equals(accountStatusCode);
+    }
 
-        private String address;
-        private String city;
-        private String state;
-        private String branch;
-        private String category;
-
-        @JsonProperty("swift_code")
-        private String swiftCode;
-
-        private Long micr;
-        private Long nbin;
+    public boolean isNameMatched() {
+        return nameMatchResult != null &&
+                (nameMatchResult.contains("DIRECT_MATCH") ||
+                        nameMatchResult.contains("PARTIAL_MATCH"));
     }
 }
