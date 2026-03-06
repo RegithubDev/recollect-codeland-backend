@@ -58,13 +58,12 @@ public class PayoutWebhookService {
             return PayoutStatus.PENDING;
         }
     }
-
     /**
      * Verify Cashfree Payout webhook signature
-     * Based on Cashfree V1 webhook documentation:
+     * Based on official Cashfree V1 webhook implementation:
      * 1. Get all POST parameters except 'signature'
      * 2. Sort the array based on keys
-     * 3. Concatenate all values in sorted order
+     * 3. Concatenate all values in sorted order using .toString()
      * 4. Encrypt using SHA-256 and base64 encode
      * 5. Compare with received signature
      */
@@ -77,8 +76,6 @@ public class PayoutWebhookService {
             }
 
             log.info("Verifying payout signature with secret length: {}", payoutWebhookSecret.length());
-            log.debug("Raw body: {}", rawBody);
-            log.debug("Received signature from header: {}", signature);
 
             // Parse JSON to Map
             Map<String, Object> jsonMap = objectMapper.readValue(
@@ -88,13 +85,32 @@ public class PayoutWebhookService {
 
             log.info("Payload keys: {}", jsonMap.keySet());
 
-            // Remove signature field if present
+            // Remove signature field if present (as per documentation)
             jsonMap.remove("signature");
 
-            // Sort map by keys and recursively process values
-            String postDataString = buildStringFromMap(jsonMap);
+            // Sort map by keys (as per official Cashfree implementation)
+            Map<String, Object> sortedMap = jsonMap.entrySet()
+                    .stream()
+                    .sorted(Map.Entry.comparingByKey())
+                    .collect(Collectors.toMap(
+                            Map.Entry::getKey,
+                            Map.Entry::getValue,
+                            (oldValue, newValue) -> oldValue,
+                            LinkedHashMap::new
+                    ));
 
-            log.debug("Concatenated string length: {}", postDataString.length());
+            log.info("Sorted keys: {}", sortedMap.keySet());
+
+            // EXACT official implementation:
+            // Iterate through keys in sorted order and call .toString() on each value
+            String postDataString = sortedMap.keySet().stream()
+                    .map(key -> {
+                        Object value = sortedMap.get(key);
+                        // Just call toString() directly - this matches the official example
+                        return value != null ? value.toString() : "";
+                    })
+                    .collect(Collectors.joining());
+
             log.debug("Concatenated string: {}", postDataString);
 
             // Generate HMAC-SHA256
@@ -106,7 +122,7 @@ public class PayoutWebhookService {
             sha256HMAC.init(secretKey);
 
             byte[] hashBytes = sha256HMAC.doFinal(postDataString.getBytes(StandardCharsets.UTF_8));
-            String computedSignature = java.util.Base64.getEncoder().encodeToString(hashBytes);
+            String computedSignature = Base64.getEncoder().encodeToString(hashBytes);
 
             log.info("Computed signature: {}", computedSignature);
             log.info("Received signature: {}", signature);
@@ -117,8 +133,6 @@ public class PayoutWebhookService {
                 log.info("Payout signature verification successful");
             } else {
                 log.warn("Payout signature verification failed");
-                log.warn("Computed: {}", computedSignature);
-                log.warn("Received: {}", signature);
             }
 
             return isValid;
@@ -129,46 +143,6 @@ public class PayoutWebhookService {
         }
     }
 
-    /**
-     * Recursively builds a string from a map by:
-     * 1. Sorting keys alphabetically
-     * 2. Concatenating all values (recursively for nested maps)
-     * 3. No quotes, no formatting - just raw values
-     */
-    private String buildStringFromMap(Map<String, Object> map) {
-        if (map == null) return "";
-
-        return map.entrySet()
-                .stream()
-                .sorted(Map.Entry.comparingByKey())
-                .map(entry -> valueToString(entry.getValue()))
-                .collect(Collectors.joining());
-    }
-
-    /**
-     * Converts any value to string, handling nested maps and lists
-     */
-    private String valueToString(Object value) {
-        if (value == null) return "";
-
-        if (value instanceof Map) {
-            // Recursively process nested maps
-            @SuppressWarnings("unchecked")
-            Map<String, Object> nestedMap = (Map<String, Object>) value;
-            return buildStringFromMap(nestedMap);
-        }
-
-        if (value instanceof List) {
-            // Process lists
-            List<?> list = (List<?>) value;
-            return list.stream()
-                    .map(this::valueToString)
-                    .collect(Collectors.joining());
-        }
-
-        // For primitive types, just return the string value
-        return value.toString();
-    }
     /**
      * Parse Cashfree Payout webhook payload
      * Supports all webhook events:
