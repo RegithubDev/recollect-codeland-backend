@@ -48,6 +48,16 @@ public class PayoutWebhookController {
 
             log.debug("Cashfree payout webhook received, length: {} chars", rawBody.length());
 
+            log.info("Headers start");
+            java.util.Enumeration<String> headerNames = request.getHeaderNames();
+
+            while (headerNames.hasMoreElements()) {
+                String headerName = headerNames.nextElement();
+                String headerValue = request.getHeader(headerName);
+                log.info("Header: {} = {}", headerName, headerValue);
+            }
+
+            log.info("Headers close");
             // 3. Get signature headers (Cashfree Payout uses different headers)
             String signature = request.getHeader("x-cf-signature");
             String timestamp = request.getHeader("x-cf-timestamp");
