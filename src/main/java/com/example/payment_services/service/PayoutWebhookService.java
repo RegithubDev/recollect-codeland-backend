@@ -72,17 +72,9 @@ public class PayoutWebhookService {
 
             String webhookSecret = cashfreeConfig.getClientSecret();
 
-            if (webhookSecret == null || webhookSecret.isEmpty()) {
-                log.error("Webhook secret not configured");
-                return false;
-            }
-
             Mac mac = Mac.getInstance("HmacSHA256");
-
-            SecretKeySpec secretKey = new SecretKeySpec(
-                    webhookSecret.getBytes(StandardCharsets.UTF_8),
-                    "HmacSHA256"
-            );
+            SecretKeySpec secretKey =
+                    new SecretKeySpec(webhookSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
 
             mac.init(secretKey);
 
