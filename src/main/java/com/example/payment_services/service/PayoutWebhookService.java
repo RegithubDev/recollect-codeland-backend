@@ -15,6 +15,7 @@ import javax.crypto.spec.SecretKeySpec;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
@@ -83,7 +84,16 @@ public class PayoutWebhookService {
                     sha256_HMAC.doFinal(rawBody.getBytes(StandardCharsets.UTF_8))
             );
 
-            return constantTimeEquals(computedSignature, signature);
+            boolean isValid = constantTimeEquals(computedSignature, signature);
+
+            if (isValid) {
+                log.info("Signature verification successful");
+            } else {
+                log.warn("Signature verification failed");
+                log.debug("Computed: {}, Received: {}", computedSignature, signature);
+            }
+
+            return isValid;
 
         } catch (Exception e) {
             log.error("Error verifying payout webhook signature", e);
@@ -92,7 +102,7 @@ public class PayoutWebhookService {
     }
 
     /**
-     * Parse Cashfree Payout webhook payload with null safety
+     * Parse Cashfree Payout webhook payload - UPDATED to match actual Cashfree format
      */
     public Map<String, Object> parsePayoutWebhookPayload(String rawBody) throws Exception {
         Map<String, Object> parsedData = new HashMap<>();
@@ -113,78 +123,124 @@ public class PayoutWebhookService {
             return parsedData;
         }
 
-        // Extract event type with null check
+        log.info("Parsing payout webhook payload");
+
+        // Extract event type (using "type" field)
         if (rootNode.has("type") && !rootNode.get("type").isNull()) {
-            parsedData.put("eventType", rootNode.get("type").asText());
+            String eventType = rootNode.get("type").asText();
+            parsedData.put("eventType", eventType);
+            log.info("Event type: {}", eventType);
         }
 
-        // Extract event time if available
-        if (rootNode.has("eventTime") && !rootNode.get("eventTime").isNull()) {
-            parsedData.put("eventTime", rootNode.get("eventTime").asText());
+        // Extract event time (using "event_time" field)
+        if (rootNode.has("event_time") && !rootNode.get("event_time").isNull()) {
+            parsedData.put("eventTime", rootNode.get("event_time").asText());
         }
 
         // Extract data node
         JsonNode dataNode = rootNode.get("data");
         if (dataNode != null && !dataNode.isNull()) {
 
-            // Transfer details with null checks
-            if (dataNode.has("transferId") && !dataNode.get("transferId").isNull()) {
-                parsedData.put("transferId", dataNode.get("transferId").asText());
+            // Transfer ID (transfer_id)
+            if (dataNode.has("transfer_id") && !dataNode.get("transfer_id").isNull()) {
+                String transferId = dataNode.get("transfer_id").asText();
+                parsedData.put("transferId", transferId);
+                log.info("Transfer ID: {}", transferId);
             }
 
-            if (dataNode.has("referenceId") && !dataNode.get("referenceId").isNull()) {
-                parsedData.put("referenceId", dataNode.get("referenceId").asText());
+            // CF Transfer ID (cf_transfer_id)
+            if (dataNode.has("cf_transfer_id") && !dataNode.get("cf_transfer_id").isNull()) {
+                parsedData.put("cfTransferId", dataNode.get("cf_transfer_id").asText());
             }
 
-            if (dataNode.has("utr") && !dataNode.get("utr").isNull()) {
-                parsedData.put("utr", dataNode.get("utr").asText());
-            }
-
-            if (dataNode.has("amount") && !dataNode.get("amount").isNull()) {
-                try {
-                    parsedData.put("amount", new BigDecimal(dataNode.get("amount").asText()));
-                } catch (Exception e) {
-                    log.warn("Could not parse amount: {}", dataNode.get("amount").asText());
-                }
-            }
-
+            // Status
             if (dataNode.has("status") && !dataNode.get("status").isNull()) {
                 parsedData.put("status", dataNode.get("status").asText());
             }
 
-            if (dataNode.has("processedOn") && !dataNode.get("processedOn").isNull()) {
-                parsedData.put("processedOn", dataNode.get("processedOn").asText());
+            // Status Code
+            if (dataNode.has("status_code") && !dataNode.get("status_code").isNull()) {
+                parsedData.put("statusCode", dataNode.get("status_code").asText());
             }
 
-            if (dataNode.has("fees") && !dataNode.get("fees").isNull()) {
+            // Status Description
+            if (dataNode.has("status_description") && !dataNode.get("status_description").isNull()) {
+                parsedData.put("statusDescription", dataNode.get("status_description").asText());
+            }
+
+            // Transfer Amount
+            if (dataNode.has("transfer_amount") && !dataNode.get("transfer_amount").isNull()) {
                 try {
-                    parsedData.put("fees", new BigDecimal(dataNode.get("fees").asText()));
+                    BigDecimal amount = new BigDecimal(dataNode.get("transfer_amount").asText());
+                    parsedData.put("amount", amount);
+                    log.info("Amount: {}", amount);
                 } catch (Exception e) {
-                    log.warn("Could not parse fees");
+                    log.warn("Could not parse transfer_amount: {}", dataNode.get("transfer_amount").asText());
                 }
             }
 
-            if (dataNode.has("tax") && !dataNode.get("tax").isNull()) {
+            // Transfer UTR
+            if (dataNode.has("transfer_utr") && !dataNode.get("transfer_utr").isNull()) {
+                parsedData.put("utr", dataNode.get("transfer_utr").asText());
+                log.info("UTR: {}", dataNode.get("transfer_utr").asText());
+            }
+
+            // Transfer Service Charge (fees)
+            if (dataNode.has("transfer_service_charge") && !dataNode.get("transfer_service_charge").isNull()) {
                 try {
-                    parsedData.put("tax", new BigDecimal(dataNode.get("tax").asText()));
+                    BigDecimal fees = new BigDecimal(dataNode.get("transfer_service_charge").asText());
+                    parsedData.put("fees", fees);
+                    log.info("Fees: {}", fees);
                 } catch (Exception e) {
-                    log.warn("Could not parse tax");
+                    log.warn("Could not parse transfer_service_charge");
                 }
             }
 
-            if (dataNode.has("failureReason") && !dataNode.get("failureReason").isNull()) {
-                parsedData.put("failureReason", dataNode.get("failureReason").asText());
+            // Transfer Service Tax
+            if (dataNode.has("transfer_service_tax") && !dataNode.get("transfer_service_tax").isNull()) {
+                try {
+                    BigDecimal tax = new BigDecimal(dataNode.get("transfer_service_tax").asText());
+                    parsedData.put("tax", tax);
+                    log.info("Tax: {}", tax);
+                } catch (Exception e) {
+                    log.warn("Could not parse transfer_service_tax");
+                }
             }
 
-            if (dataNode.has("remarks") && !dataNode.get("remarks").isNull()) {
-                parsedData.put("remarks", dataNode.get("remarks").asText());
+            // Transfer Mode
+            if (dataNode.has("transfer_mode") && !dataNode.get("transfer_mode").isNull()) {
+                parsedData.put("transferMode", dataNode.get("transfer_mode").asText());
+            }
+
+            // Beneficiary Details
+            if (dataNode.has("beneficiary_details") && !dataNode.get("beneficiary_details").isNull()) {
+                JsonNode benNode = dataNode.get("beneficiary_details");
+                if (benNode.has("beneficiary_id") && !benNode.get("beneficiary_id").isNull()) {
+                    parsedData.put("beneficiaryId", benNode.get("beneficiary_id").asText());
+                }
+
+                // Store full beneficiary details as JSON for metadata
+                try {
+                    parsedData.put("beneficiaryDetails", objectMapper.writeValueAsString(benNode));
+                } catch (Exception e) {
+                    log.warn("Could not serialize beneficiary details");
+                }
+            }
+
+            // Added on / Updated on
+            if (dataNode.has("added_on") && !dataNode.get("added_on").isNull()) {
+                parsedData.put("addedOn", dataNode.get("added_on").asText());
+            }
+
+            if (dataNode.has("updated_on") && !dataNode.get("updated_on").isNull()) {
+                parsedData.put("updatedOn", dataNode.get("updated_on").asText());
             }
         }
 
         // Store raw payload for debugging
         parsedData.put("rawPayload", rawBody);
 
-        log.debug("Parsed payout webhook data: {}", parsedData);
+        log.info("Parsed payout webhook data: {}", parsedData);
         return parsedData;
     }
 
@@ -208,8 +264,8 @@ public class PayoutWebhookService {
         // Check data for test indicators
         JsonNode dataNode = rootNode.get("data");
         if (dataNode != null) {
-            if (dataNode.has("transferId")) {
-                String transferId = dataNode.get("transferId").asText();
+            if (dataNode.has("transfer_id")) {
+                String transferId = dataNode.get("transfer_id").asText();
                 if (transferId.contains("test") || transferId.contains("TEST")) {
                     return true;
                 }
@@ -224,6 +280,8 @@ public class PayoutWebhookService {
      */
     @Transactional
     public void processPayoutWebhook(Map<String, Object> webhookData) {
+        log.info("========== PROCESSING PAYOUT WEBHOOK ==========");
+
         // Check if this is a test webhook
         if (webhookData.containsKey("isTest") && (Boolean) webhookData.get("isTest")) {
             log.info("Test payout webhook received - skipping processing");
@@ -232,55 +290,58 @@ public class PayoutWebhookService {
 
         String eventType = (String) webhookData.get("eventType");
         String transferId = (String) webhookData.get("transferId");
-        String referenceId = (String) webhookData.get("referenceId");
+        String cfTransferId = (String) webhookData.get("cfTransferId");
         String status = (String) webhookData.get("status");
 
-        // If no transferId or referenceId, this might be a test
-        if ((transferId == null || transferId.isEmpty()) &&
-                (referenceId == null || referenceId.isEmpty())) {
-            log.info("Payout webhook without identifiers - treating as test");
+        log.info("Event Type: {}", eventType);
+        log.info("Transfer ID: {}", transferId);
+        log.info("CF Transfer ID: {}", cfTransferId);
+        log.info("Status: {}", status);
+
+        // If no transferId, this might be a test
+        if (transferId == null || transferId.isEmpty()) {
+            log.warn("Payout webhook without transfer_id - treating as test");
             return;
         }
 
-        log.info("Processing payout webhook - Event: {}, Transfer: {}, Status: {}",
-                eventType, transferId, status);
+        // Find payout transaction by transferId
+        log.info("Looking for transaction with transferId: {}", transferId);
+        Optional<PayoutTransaction> transactionOpt = payoutTransactionRepository.findByTransferId(transferId);
 
-        // Find payout transaction by transferId or referenceId
-        PayoutTransaction transaction = null;
+        if (transactionOpt.isEmpty()) {
+            log.error("Payout transaction not found for transferId: {}", transferId);
 
-        if (transferId != null && !transferId.isEmpty()) {
-            Optional<PayoutTransaction> byTransferId = payoutTransactionRepository
-                    .findByTransferId(transferId);
-            if (byTransferId.isPresent()) {
-                transaction = byTransferId.get();
+            // Try to find by cfTransferId as fallback
+            if (cfTransferId != null && !cfTransferId.isEmpty()) {
+                log.info("Trying to find by cfTransferId: {}", cfTransferId);
+                transactionOpt = payoutTransactionRepository.findByCfTransferId(cfTransferId);
+            }
+
+            if (transactionOpt.isEmpty()) {
+                log.error("Payout transaction not found for cfTransferId either");
+                return;
             }
         }
 
-        if (transaction == null && referenceId != null && !referenceId.isEmpty()) {
-            Optional<PayoutTransaction> byReferenceId = payoutTransactionRepository
-                    .findByReferenceId(referenceId);
-            if (byReferenceId.isPresent()) {
-                transaction = byReferenceId.get();
-            }
-        }
+        PayoutTransaction transaction = transactionOpt.get();
+        log.info("Found transaction - ID: {}, Current Status: {}",
+                transaction.getId(), transaction.getStatus());
 
-        if (transaction == null) {
-            log.warn("Payout transaction not found for test webhook. TransferId: {}, ReferenceId: {}",
-                    transferId, referenceId);
-            return; // Don't throw exception for test webhooks
-        }
+        // Log before update
+        log.info("Before update - Status: {}, StatusCode: {}",
+                transaction.getStatus(), transaction.getStatusCode());
 
         // Update transaction based on event type
         updatePayoutTransaction(transaction, webhookData);
 
         // Save the updated transaction
-        payoutTransactionRepository.save(transaction);
+        PayoutTransaction saved = payoutTransactionRepository.save(transaction);
+        log.info("Transaction saved with ID: {}, New Status: {}", saved.getId(), saved.getStatus());
 
         // Trigger post-processing actions
         triggerPostPayoutActions(transaction, eventType);
 
-        log.info("Payout webhook processed successfully. ID: {}, Status: {}",
-                transaction.getId(), transaction.getStatus());
+        log.info("========== PAYOUT WEBHOOK PROCESSING COMPLETE ==========");
     }
 
     /**
@@ -291,60 +352,73 @@ public class PayoutWebhookService {
 
         String eventType = (String) webhookData.get("eventType");
         String status = (String) webhookData.get("status");
+        String cfTransferId = (String) webhookData.get("cfTransferId");
+        String utr = (String) webhookData.get("utr");
+        String statusCode = (String) webhookData.get("statusCode");
+        String statusDescription = (String) webhookData.get("statusDescription");
+        String transferMode = (String) webhookData.get("transferMode");
+
+        log.info("Updating transaction {} with event: {}, status: {}",
+                transaction.getTransferId(), eventType, status);
 
         // Update basic fields
         transaction.setUpdatedAt(LocalDateTime.now());
+
+        // Set CF Transfer ID if available and not already set
+        if (cfTransferId != null && !cfTransferId.isEmpty() && transaction.getCfTransferId() == null) {
+            transaction.setCfTransferId(cfTransferId);
+            log.info("Set cfTransferId: {}", cfTransferId);
+        }
 
         // Map Cashfree status to your entity status
         String entityStatus = mapToEntityStatus(eventType, status);
         transaction.setStatus(entityStatus);
 
+        // Set status code and description
+        if (statusCode != null) {
+            transaction.setStatusCode(statusCode);
+        }
+
+        if (statusDescription != null) {
+            transaction.setStatusDescription(statusDescription);
+        }
+
         // Update specific fields based on event type
-        switch (eventType) {
-            case "TRANSFER_SUCCESS":
-                transaction.setStatusCode("SUCCESS");
-                transaction.setStatusDescription("Transfer completed successfully");
+        if ("TRANSFER_SUCCESS".equals(eventType)) {
+            if (utr != null) {
+                // Store UTR in reference_id or metadata
+                transaction.setReferenceId(utr);
+                log.info("Set UTR/ReferenceId: {}", utr);
+            }
+        }
 
-                if (webhookData.containsKey("utr")) {
-                    // Assuming you have a utr field in your entity
-                    // If not, you can store it in metadata
-                    String utr = (String) webhookData.get("utr");
-                    // transaction.setUtr(utr); // If you add this field
-                }
-                break;
-
-            case "TRANSFER_FAILED":
-                transaction.setStatusCode("FAILED");
-                transaction.setStatusDescription("Transfer failed");
-
-                if (webhookData.containsKey("failureReason")) {
-                    transaction.setStatusDescription(
-                            "Transfer failed: " + webhookData.get("failureReason")
-                    );
-                }
-                break;
-
-            case "TRANSFER_REVERSED":
-                transaction.setStatusCode("REVERSED");
-                transaction.setStatusDescription("Transfer reversed");
-                break;
-
-            case "TRANSFER_PROCESSING":
-                transaction.setStatusCode("PROCESSING");
-                transaction.setStatusDescription("Transfer is being processed");
-                break;
-
-            default:
-                log.warn("Unknown event type: {}", eventType);
+        // Update transfer mode if provided
+        if (transferMode != null) {
+            transaction.setTransferMode(transferMode);
         }
 
         // Update fees and tax if available
-        if (webhookData.containsKey("fees")) {
+        if (webhookData.containsKey("fees") && webhookData.get("fees") != null) {
             transaction.setFees((BigDecimal) webhookData.get("fees"));
+            log.info("Set fees: {}", webhookData.get("fees"));
         }
 
-        if (webhookData.containsKey("tax")) {
+        if (webhookData.containsKey("tax") && webhookData.get("tax") != null) {
             transaction.setTax((BigDecimal) webhookData.get("tax"));
+            log.info("Set tax: {}", webhookData.get("tax"));
+        }
+
+        // Build metadata with additional info
+        try {
+            Map<String, Object> metadata = new HashMap<>();
+            metadata.put("eventType", eventType);
+            metadata.put("processedAt", LocalDateTime.now().toString());
+            metadata.put("utr", utr);
+            metadata.put("webhookData", webhookData);
+
+            transaction.setMetadata(objectMapper.writeValueAsString(metadata));
+        } catch (Exception e) {
+            log.warn("Could not serialize metadata", e);
         }
     }
 

@@ -14,6 +14,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -36,92 +37,50 @@ public class PayoutWebhookController {
             rawBody = readRequestBody(request);
 
             // Log request details for debugging
-            log.info("Payout webhook received - Method: {}, Content-Type: {}",
-                    request.getMethod(), request.getContentType());
+            log.info("========== PAYOUT WEBHOOK RECEIVED ==========");
+            log.info("Method: {}, Content-Type: {}", request.getMethod(), request.getContentType());
 
-            log.info("Webhook rawbody {}", rawBody);
-            // 2. Handle test requests - Return simple OK without processing
-            if (isTestRequest(request, rawBody)) {
-                log.info("Test payout webhook detected - returning OK");
-                return ResponseEntity.ok("OK");
-            }
+            // 2. Get signature headers (Cashfree sends x-webhook-signature, not x-cf-signature)
+            String signature = request.getHeader("x-webhook-signature");
+            String timestamp = request.getHeader("x-webhook-timestamp");
 
-            log.debug("Cashfree payout webhook received, length: {} chars", rawBody.length());
-
-            log.info("Headers start");
-            java.util.Enumeration<String> headerNames = request.getHeaderNames();
-
-            while (headerNames.hasMoreElements()) {
-                String headerName = headerNames.nextElement();
-                String headerValue = request.getHeader(headerName);
-                log.info("Header: {} = {}", headerName, headerValue);
-            }
-
-            log.info("Headers close");
-            // 3. Get signature headers (Cashfree Payout uses different headers)
-            String signature = request.getHeader("x-cf-signature");
-            String timestamp = request.getHeader("x-cf-timestamp");
-
-            // 4. Verify signature for real requests
+            // 3. If signature present, process as real webhook
             if (signature != null && !signature.isEmpty()) {
+                log.info("Signature header found, processing real webhook");
+
+                // Verify signature
                 if (!payoutWebhookService.verifyPayoutSignature(rawBody, signature)) {
                     log.error("Invalid payout webhook signature");
                     return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid signature");
                 }
-            } else {
-                log.warn("Missing signature header - treating as test");
+                log.info("Signature verified successfully");
+
+                // Parse and process payout webhook
+                Map<String, Object> webhookData = payoutWebhookService.parsePayoutWebhookPayload(rawBody);
+
+                // Check if it's a test webhook from the service
+                if (webhookData.containsKey("isTest") && (Boolean) webhookData.get("isTest")) {
+                    log.info("Test webhook detected by service - returning OK");
+                    return ResponseEntity.ok("OK");
+                }
+
+                // Process real webhook
+                payoutWebhookService.processPayoutWebhook(webhookData);
+
+                log.info("Payout webhook processed successfully for transfer: {}",
+                        webhookData.get("transferId"));
                 return ResponseEntity.ok("OK");
             }
 
-            // 5. Parse and process payout webhook
-            Map<String, Object> webhookData = payoutWebhookService.parsePayoutWebhookPayload(rawBody);
-
-            // Check if it's a test webhook from the service
-            if (webhookData.containsKey("isTest") && (Boolean) webhookData.get("isTest")) {
-                log.info("Test webhook detected by service");
-                return ResponseEntity.ok("OK");
-            }
-
-            // Process real webhook
-            payoutWebhookService.processPayoutWebhook(webhookData);
-
-            log.info("Payout webhook processed successfully: {}", webhookData.get("transferId"));
+            // 4. No signature - treat as test
+            log.warn("Missing signature header - treating as test request");
             return ResponseEntity.ok("OK");
 
         } catch (Exception e) {
-            log.error("Error processing payout webhook: {}", e.getMessage());
+            log.error("Error processing payout webhook: {}", e.getMessage(), e);
             // Always return OK to prevent retries
             return ResponseEntity.ok("OK");
         }
-    }
-
-    /**
-     * Check if this is a test request
-     */
-    private boolean isTestRequest(HttpServletRequest request, String rawBody) {
-        // Empty body test
-        if (rawBody == null || rawBody.trim().isEmpty()) {
-            return true;
-        }
-
-        // Check User-Agent header
-        String userAgent = request.getHeader("User-Agent");
-        if (userAgent != null && (userAgent.contains("test") || userAgent.contains("Test"))) {
-            return true;
-        }
-
-        // Check if body is simple test string
-        String trimmedBody = rawBody.trim();
-        if (trimmedBody.equals("test") || trimmedBody.equals("ping") || trimmedBody.equals("{}")) {
-            return true;
-        }
-
-        // Check if body contains test indicators
-        if (rawBody.contains("\"test\"") || rawBody.contains("\"isTest\"")) {
-            return true;
-        }
-
-        return false;
     }
 
     @Operation(summary = "Handle GET requests for payout webhook testing")
