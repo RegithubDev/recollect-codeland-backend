@@ -59,31 +59,29 @@ public class PayoutWebhookService {
         }
     }
     /**
-     * Verify Cashfree Payout webhook signature
-     * Based on official Cashfree V1 webhook implementation:
-     * 1. Get all POST parameters except 'signature'
-     * 2. Sort the array based on keys
-     * 3. Concatenate all values in sorted order using .toString()
-     * 4. Encrypt using SHA-256 and base64 encode
-     * 5. Compare with received signature
+     * Verify Cashfree Payout V2 webhook signature
+     * For V2 webhooks, the signature is calculated as:
+     * HMAC-SHA256(webhook_secret, timestamp + rawBody)
      */
-    public boolean verifyPayoutSignature(String rawBody, String signature) {
+    public boolean verifyPayoutSignature(String rawBody, String signature, String timestamp) {
         try {
-
             String webhookSecret = cashfreeConfig.getClientSecret();
+
+            // For V2 webhooks, the signature is calculated on timestamp + body
+            String dataToSign = timestamp + rawBody;
 
             Mac mac = Mac.getInstance("HmacSHA256");
             SecretKeySpec secretKey =
                     new SecretKeySpec(webhookSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
 
             mac.init(secretKey);
-
-            byte[] hash = mac.doFinal(rawBody.getBytes(StandardCharsets.UTF_8));
+            byte[] hash = mac.doFinal(dataToSign.getBytes(StandardCharsets.UTF_8));
 
             String computedSignature = Base64.getEncoder().encodeToString(hash);
 
-            log.info("Computed signature: {}", computedSignature);
+            log.info("Computed signature (V2 method): {}", computedSignature);
             log.info("Received signature: {}", signature);
+            log.info("Timestamp used: {}", timestamp);
 
             return constantTimeEquals(computedSignature, signature);
 

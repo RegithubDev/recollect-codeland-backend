@@ -49,7 +49,7 @@ public class PayoutWebhookController {
                 log.info("Signature header found, processing real webhook");
 
                 // Verify signature
-                if (!payoutWebhookService.verifyPayoutSignature(rawBody, signature)) {
+                if (!payoutWebhookService.verifyPayoutSignature(rawBody, signature, timestamp)) {
                     log.error("Invalid payout webhook signature");
                     return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid signature");
                 }
