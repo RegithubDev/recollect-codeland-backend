@@ -69,76 +69,34 @@ public class PayoutWebhookService {
      */
     public boolean verifyPayoutSignature(String rawBody, String signature) {
         try {
-            String payoutWebhookSecret = cashfreeConfig.getClientSecret();
-            if (payoutWebhookSecret == null || payoutWebhookSecret.isEmpty()) {
-                log.error("Payout webhook secret not configured");
+
+            String webhookSecret = cashfreeConfig.getClientSecret();
+
+            if (webhookSecret == null || webhookSecret.isEmpty()) {
+                log.error("Webhook secret not configured");
                 return false;
             }
 
-            log.info("Verifying payout signature with secret length: {}", payoutWebhookSecret.length());
+            Mac mac = Mac.getInstance("HmacSHA256");
 
-            // Parse JSON to Map
-            Map<String, Object> jsonMap = objectMapper.readValue(
-                    rawBody,
-                    new TypeReference<Map<String, Object>>() {}
-            );
-
-            log.info("Payload keys: {}", jsonMap.keySet());
-
-            // Remove signature field if present (as per documentation)
-            jsonMap.remove("signature");
-
-            // Sort map by keys (as per official Cashfree implementation)
-            Map<String, Object> sortedMap = jsonMap.entrySet()
-                    .stream()
-                    .sorted(Map.Entry.comparingByKey())
-                    .collect(Collectors.toMap(
-                            Map.Entry::getKey,
-                            Map.Entry::getValue,
-                            (oldValue, newValue) -> oldValue,
-                            LinkedHashMap::new
-                    ));
-
-            log.info("Sorted keys: {}", sortedMap.keySet());
-
-            // EXACT official implementation:
-            // Iterate through keys in sorted order and call .toString() on each value
-            String postDataString = sortedMap.keySet().stream()
-                    .map(key -> {
-                        Object value = sortedMap.get(key);
-                        // Just call toString() directly - this matches the official example
-                        return value != null ? value.toString() : "";
-                    })
-                    .collect(Collectors.joining());
-
-            log.debug("Concatenated string: {}", postDataString);
-
-            // Generate HMAC-SHA256
-            Mac sha256HMAC = Mac.getInstance("HmacSHA256");
             SecretKeySpec secretKey = new SecretKeySpec(
-                    payoutWebhookSecret.getBytes(StandardCharsets.UTF_8),
+                    webhookSecret.getBytes(StandardCharsets.UTF_8),
                     "HmacSHA256"
             );
-            sha256HMAC.init(secretKey);
 
-            byte[] hashBytes = sha256HMAC.doFinal(postDataString.getBytes(StandardCharsets.UTF_8));
-            String computedSignature = Base64.getEncoder().encodeToString(hashBytes);
+            mac.init(secretKey);
+
+            byte[] hash = mac.doFinal(rawBody.getBytes(StandardCharsets.UTF_8));
+
+            String computedSignature = Base64.getEncoder().encodeToString(hash);
 
             log.info("Computed signature: {}", computedSignature);
             log.info("Received signature: {}", signature);
 
-            boolean isValid = computedSignature.equals(signature);
-
-            if (isValid) {
-                log.info("Payout signature verification successful");
-            } else {
-                log.warn("Payout signature verification failed");
-            }
-
-            return isValid;
+            return constantTimeEquals(computedSignature, signature);
 
         } catch (Exception e) {
-            log.error("Error verifying payout webhook signature", e);
+            log.error("Webhook signature verification failed", e);
             return false;
         }
     }
