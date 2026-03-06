@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -48,7 +49,49 @@ public class CashfreePayoutHttpService {
         }
     }
 
-    // ========== STANDARD TRANSFER V2 ========== (CORRECTED)
+    // ========== DELETE BENEFICIARY ==========
+    public CashfreeBeneficiaryDeleteResponse deleteBeneficiary(String beneficiaryId) {
+        try {
+            String url = cashfreeConfig.getPayoutBaseUrl() + "/beneficiary";
+
+            UriComponentsBuilder builder = fromHttpUrl(url)
+                    .queryParam("beneficiary_id", beneficiaryId);
+
+            HttpHeaders headers = createHeaders();
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+
+            log.info("Deleting beneficiary with ID: {}", beneficiaryId);
+
+            ResponseEntity<CashfreeBeneficiaryDeleteResponse> response = restTemplate.exchange(
+                    builder.toUriString(),
+                    HttpMethod.DELETE,
+                    entity,
+                    CashfreeBeneficiaryDeleteResponse.class);
+
+            log.info("Delete beneficiary response status: {}", response.getStatusCode());
+
+            if (response.getStatusCode() == HttpStatus.OK) {
+                log.info("Beneficiary deleted successfully: {}", response.getBody());
+                return response.getBody();
+            } else {
+                log.error("Delete beneficiary failed. Status: {}", response.getStatusCode());
+                throw new RuntimeException("Failed to delete beneficiary. Status: " + response.getStatusCode());
+            }
+
+        } catch (HttpClientErrorException e) {
+            // Handle specific HTTP errors
+            log.error("HTTP error deleting beneficiary: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
+
+            // You can parse the error response here if needed
+            throw e;
+
+        } catch (Exception e) {
+            log.error("Delete beneficiary error", e);
+            throw new RuntimeException("Beneficiary deletion failed: " + e.getMessage());
+        }
+    }
+
+    // ========== STANDARD TRANSFER V2 ==========
     public CashfreeTransferResponse initiateTransfer(CashfreeTransferRequest request) {
         try {
             String url = cashfreeConfig.getPayoutBaseUrl() + "/transfers";

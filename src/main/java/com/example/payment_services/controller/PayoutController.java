@@ -78,6 +78,73 @@ public class PayoutController {
     }
 
     @Operation(
+            summary = "Delete Beneficiary",
+            description = "Deletes an existing beneficiary by beneficiary ID"
+    )
+    @ApiResponses(value = {
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Beneficiary deleted successfully",
+                    content = @Content(schema = @Schema(implementation = CashfreeBeneficiaryDeleteResponse.class))
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Invalid request - beneficiary_id length exceeded",
+                    content = @Content(schema = @Schema(example = "{\"type\": \"invalid_request_error\", \"code\": \"beneficiary_id_length_exceeded\", \"message\": \"beneficiary_id : should not be more than 50 characters long\"}"))
+            ),
+            @ApiResponse(
+                    responseCode = "403",
+                    description = "APIs not enabled for this merchant",
+                    content = @Content(schema = @Schema(example = "{\"type\": \"invalid_request_error\", \"code\": \"apis_not_enabled\", \"message\": \"APIs not enabled\"}"))
+            ),
+            @ApiResponse(
+                    responseCode = "404",
+                    description = "Beneficiary not found",
+                    content = @Content(schema = @Schema(example = "{\"type\": \"invalid_request_error\", \"code\": \"beneficiary_not_found\", \"message\": \"Beneficiary does not exist\"}"))
+            ),
+            @ApiResponse(
+                    responseCode = "500",
+                    description = "Internal server error at Cashfree",
+                    content = @Content(schema = @Schema(example = "{\"type\": \"api_error\", \"code\": \"internal_server_error\", \"message\": \"Error at cashfree's server\"}"))
+            )
+    })
+    @DeleteMapping("/delete/beneficiary/{beneficiaryId}")
+    public ResponseEntity<CashfreeBeneficiaryDeleteResponse> deleteBeneficiary(
+            @Parameter(
+                    description = "Unique beneficiary ID to delete",
+                    example = "JOHN18011343",
+                    required = true
+            )
+            @PathVariable String beneficiaryId) {
+
+        log.info("Deleting beneficiary: {}", beneficiaryId);
+
+        CashfreeBeneficiaryDeleteResponse response = cashfreePayoutHttpService.deleteBeneficiary(beneficiaryId);
+
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(
+            summary = "Delete Beneficiary (Query Param Version)",
+            description = "Deletes an existing beneficiary using query parameter"
+    )
+    @DeleteMapping("/delete/beneficiary")
+    public ResponseEntity<CashfreeBeneficiaryDeleteResponse> deleteBeneficiaryByQueryParam(
+            @Parameter(
+                    description = "Unique beneficiary ID to delete",
+                    example = "JOHN18011343",
+                    required = true
+            )
+            @RequestParam String beneficiaryId) {
+
+        log.info("Deleting beneficiary via query param: {}", beneficiaryId);
+
+        CashfreeBeneficiaryDeleteResponse response = cashfreePayoutHttpService.deleteBeneficiary(beneficiaryId);
+
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(
             summary = "Initiate Payout Transfer",
             description = "Initiates a fund transfer to a registered beneficiary"
     )
