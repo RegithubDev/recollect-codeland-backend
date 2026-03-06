@@ -130,9 +130,9 @@ public class PayoutWebhookService {
             boolean isValid = computedSignature.equals(signature);
 
             if (isValid) {
-                log.info("✅ Payout signature verification successful");
+                log.info("Payout signature verification successful");
             } else {
-                log.warn("❌ Payout signature verification failed");
+                log.warn("Payout signature verification failed");
                 log.warn("Computed: {}", computedSignature);
                 log.warn("Received: {}", signature);
             }
@@ -449,7 +449,7 @@ public class PayoutWebhookService {
                     .findByTransferId(transferId);
             if (byTransferId.isPresent()) {
                 transaction = byTransferId.get();
-                log.info("✅ Found transaction by transferId");
+                log.info("Found transaction by transferId");
             }
         }
 
@@ -460,7 +460,7 @@ public class PayoutWebhookService {
                     .findByReferenceId(referenceId);
             if (byReferenceId.isPresent()) {
                 transaction = byReferenceId.get();
-                log.info("✅ Found transaction by referenceId");
+                log.info("Found transaction by referenceId");
                 // Set cfTransferId if not already set
                 if (transaction.getCfTransferId() == null) {
                     transaction.setCfTransferId(referenceId);
@@ -475,18 +475,18 @@ public class PayoutWebhookService {
                     .findByCfTransferId(cfTransferId);
             if (byCfTransferId.isPresent()) {
                 transaction = byCfTransferId.get();
-                log.info("✅ Found transaction by cfTransferId");
+                log.info("Found transaction by cfTransferId");
             }
         }
 
         if (transaction == null) {
-            log.error("❌ Payout transaction not found for any identifier");
+            log.error("Payout transaction not found for any identifier");
             log.error("Searched by - transferId: {}, referenceId: {}, cfTransferId: {}",
                     transferId, referenceId, cfTransferId);
             return;
         }
 
-        log.info("✅ Found transaction - ID: {}, Current Status: {}",
+        log.info("Found transaction - ID: {}, Current Status: {}",
                 transaction.getId(), transaction.getStatus());
 
         // Update transaction
@@ -494,7 +494,7 @@ public class PayoutWebhookService {
 
         // Save the updated transaction
         PayoutTransaction saved = payoutTransactionRepository.save(transaction);
-        log.info("✅ Transaction saved with ID: {}, New Status: {}", saved.getId(), saved.getStatus());
+        log.info("Transaction saved with ID: {}, New Status: {}", saved.getId(), saved.getStatus());
 
         // Trigger post-processing actions
         triggerPostPayoutActions(transaction, eventType);
