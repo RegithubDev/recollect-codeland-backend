@@ -16,7 +16,6 @@ import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -58,6 +57,7 @@ public class PayoutWebhookService {
             return PayoutStatus.PENDING;
         }
     }
+
     /**
      * Verify Cashfree Payout V2 webhook signature
      * For V2 webhooks, the signature is calculated as:
@@ -92,17 +92,34 @@ public class PayoutWebhookService {
     }
 
     /**
-     * Parse Cashfree Payout webhook payload
-     * Supports all webhook events:
-     * - TRANSFER_SUCCESS
-     * - TRANSFER_FAILED
-     * - TRANSFER_REVERSED
-     * - CREDIT_CONFIRMATION
-     * - TRANSFER_ACKNOWLEDGED
-     * - TRANSFER_REJECTED
-     * - BENEFICIARY_INCIDENT
-     * - LOW_BALANCE_ALERT
-     * - BULK_TRANSFER_REJECTED
+     * Parse Cashfree Payout V2 webhook payload
+     * Updated to handle the correct V2 webhook structure:
+     * {
+     *   "data": {
+     *     "transfer_id": "...",
+     *     "cf_transfer_id": "...",
+     *     "status": "SUCCESS",
+     *     "status_code": "COMPLETED",
+     *     "status_description": "...",
+     *     "beneficiary_details": {
+     *       "beneficiary_id": "...",
+     *       "beneficiary_instrument_details": {
+     *         "bank_account_number": "...",
+     *         "bank_ifsc": "..."
+     *       }
+     *     },
+     *     "transfer_amount": 2,
+     *     "transfer_service_charge": 6,
+     *     "transfer_service_tax": 1.08,
+     *     "transfer_mode": "imps",
+     *     "transfer_utr": "...",
+     *     "fundsource_id": "CF Wallet",
+     *     "added_on": "2026-03-06T18:18:12",
+     *     "updated_on": "2026-03-06T18:18:14"
+     *   },
+     *   "event_time": "2026-03-06T18:18:14",
+     *   "type": "TRANSFER_SUCCESS"
+     * }
      */
     public Map<String, Object> parsePayoutWebhookPayload(String rawBody) throws Exception {
         Map<String, Object> parsedData = new HashMap<>();
@@ -120,59 +137,117 @@ public class PayoutWebhookService {
 
         log.info("Raw webhook data: {}", rootMap);
 
-        // Extract signature for logging
-        if (rootMap.containsKey("signature")) {
-            parsedData.put("signature", rootMap.get("signature").toString());
-        }
-
-        // Extract event type (common for all webhooks)
-        if (rootMap.containsKey("event")) {
-            String eventType = rootMap.get("event").toString();
+        // Extract event type from root (V2 webhook)
+        if (rootMap.containsKey("type")) {
+            String eventType = rootMap.get("type").toString();
             parsedData.put("eventType", eventType);
             log.info("Event type: {}", eventType);
         }
 
-        // Extract event time if present
-        if (rootMap.containsKey("eventTime")) {
-            parsedData.put("eventTime", rootMap.get("eventTime").toString());
+        // Extract event time from root
+        if (rootMap.containsKey("event_time")) {
+            parsedData.put("eventTime", rootMap.get("event_time").toString());
         }
 
-        // Process based on event type
-        String eventType = parsedData.getOrDefault("eventType", "").toString();
+        // Extract the nested data object (contains all transaction details)
+        if (rootMap.containsKey("data")) {
+            Map<String, Object> dataMap = (Map<String, Object>) rootMap.get("data");
 
-        switch (eventType) {
-            case "TRANSFER_SUCCESS":
-                parseTransferSuccess(rootMap, parsedData);
-                break;
+            // Map V2 field names to your expected field names
+            if (dataMap.containsKey("transfer_id")) {
+                parsedData.put("transferId", dataMap.get("transfer_id").toString());
+            }
 
-            case "TRANSFER_FAILED":
-                parseTransferFailed(rootMap, parsedData);
-                break;
+            if (dataMap.containsKey("cf_transfer_id")) {
+                parsedData.put("referenceId", dataMap.get("cf_transfer_id").toString());
+                parsedData.put("cfTransferId", dataMap.get("cf_transfer_id").toString());
+            }
 
-            case "TRANSFER_REVERSED":
-                parseTransferReversed(rootMap, parsedData);
-                break;
+            if (dataMap.containsKey("transfer_utr")) {
+                parsedData.put("utr", dataMap.get("transfer_utr").toString());
+            }
 
-            case "TRANSFER_ACKNOWLEDGED":
-                parseTransferAcknowledged(rootMap, parsedData);
-                break;
+            if (dataMap.containsKey("status")) {
+                parsedData.put("status", dataMap.get("status").toString());
+            }
 
-            case "TRANSFER_REJECTED":
-                parseTransferRejected(rootMap, parsedData);
-                break;
+            if (dataMap.containsKey("status_code")) {
+                parsedData.put("statusCode", dataMap.get("status_code").toString());
+            }
 
-            case "CREDIT_CONFIRMATION":
-                parseCreditConfirmation(rootMap, parsedData);
-                break;
+            if (dataMap.containsKey("status_description")) {
+                parsedData.put("statusDescription", dataMap.get("status_description").toString());
+            }
 
-            case "LOW_BALANCE_ALERT":
-                parseLowBalanceAlert(rootMap, parsedData);
-                break;
+            if (dataMap.containsKey("transfer_amount")) {
+                try {
+                    parsedData.put("amount", new BigDecimal(dataMap.get("transfer_amount").toString()));
+                    parsedData.put("transferAmount", new BigDecimal(dataMap.get("transfer_amount").toString()));
+                } catch (Exception e) {
+                    log.warn("Could not parse transfer_amount");
+                }
+            }
 
-            default:
-                log.warn("Unknown event type: {}", eventType);
-                // Try to extract common fields anyway
-                extractCommonFields(rootMap, parsedData);
+            if (dataMap.containsKey("transfer_service_charge")) {
+                try {
+                    parsedData.put("fees", new BigDecimal(dataMap.get("transfer_service_charge").toString()));
+                } catch (Exception e) {
+                    log.warn("Could not parse transfer_service_charge");
+                }
+            }
+
+            if (dataMap.containsKey("transfer_service_tax")) {
+                try {
+                    parsedData.put("tax", new BigDecimal(dataMap.get("transfer_service_tax").toString()));
+                } catch (Exception e) {
+                    log.warn("Could not parse transfer_service_tax");
+                }
+            }
+
+            if (dataMap.containsKey("transfer_mode")) {
+                parsedData.put("transferMode", dataMap.get("transfer_mode").toString());
+            }
+
+            if (dataMap.containsKey("fundsource_id")) {
+                parsedData.put("fundSource", dataMap.get("fundsource_id").toString());
+            }
+
+            if (dataMap.containsKey("added_on")) {
+                parsedData.put("addedOn", dataMap.get("added_on").toString());
+            }
+
+            if (dataMap.containsKey("updated_on")) {
+                parsedData.put("updatedOn", dataMap.get("updated_on").toString());
+            }
+
+            // Extract beneficiary details
+            if (dataMap.containsKey("beneficiary_details")) {
+                Map<String, Object> beneficiaryMap = (Map<String, Object>) dataMap.get("beneficiary_details");
+
+                if (beneficiaryMap.containsKey("beneficiary_id")) {
+                    parsedData.put("beneficiaryId", beneficiaryMap.get("beneficiary_id").toString());
+                }
+
+                // Extract beneficiary instrument details
+                if (beneficiaryMap.containsKey("beneficiary_instrument_details")) {
+                    Map<String, Object> instrumentMap = (Map<String, Object>) beneficiaryMap.get("beneficiary_instrument_details");
+
+                    if (instrumentMap.containsKey("bank_account_number")) {
+                        parsedData.put("bankAccountNumber", instrumentMap.get("bank_account_number").toString());
+                    }
+
+                    if (instrumentMap.containsKey("bank_ifsc")) {
+                        parsedData.put("bankIfsc", instrumentMap.get("bank_ifsc").toString());
+                    }
+                }
+            }
+
+            // Handle failure reason if present
+            if (dataMap.containsKey("failure_reason")) {
+                parsedData.put("failureReason", dataMap.get("failure_reason").toString());
+            } else if (dataMap.containsKey("reason")) {
+                parsedData.put("failureReason", dataMap.get("reason").toString());
+            }
         }
 
         // Store raw payload
@@ -180,181 +255,6 @@ public class PayoutWebhookService {
 
         log.info("Parsed payout webhook data: {}", parsedData);
         return parsedData;
-    }
-
-    private void parseTransferSuccess(Map<String, Object> rootMap, Map<String, Object> parsedData) {
-        // TRANSFER_SUCCESS parameters:
-        // - transferId: Id of the transfer passed by the merchant
-        // - referenceId: Id of the transfer generated by Cashfree Payments
-        // - acknowledged: Flag if beneficiary bank has acknowledged the transfer
-        // - eventTime: Transfer initiation time
-        // - utr: Unique transaction reference number provided by the bank
-
-        if (rootMap.containsKey("transferId")) {
-            parsedData.put("transferId", rootMap.get("transferId").toString());
-        }
-        if (rootMap.containsKey("referenceId")) {
-            parsedData.put("referenceId", rootMap.get("referenceId").toString());
-            parsedData.put("cfTransferId", rootMap.get("referenceId").toString()); // Map to cfTransferId
-        }
-        if (rootMap.containsKey("acknowledged")) {
-            parsedData.put("acknowledged", rootMap.get("acknowledged"));
-        }
-        if (rootMap.containsKey("utr")) {
-            parsedData.put("utr", rootMap.get("utr").toString());
-        }
-
-        // Set status based on acknowledged flag
-        Object ack = rootMap.get("acknowledged");
-        if (ack != null) {
-            if ("1".equals(ack.toString()) || Boolean.TRUE.equals(ack)) {
-                parsedData.put("status", "SUCCESS");
-                parsedData.put("statusDescription", "Transfer completed and credited to beneficiary");
-            } else {
-                parsedData.put("status", "PROCESSING");
-                parsedData.put("statusDescription", "Transfer initiated, awaiting bank acknowledgment");
-            }
-        } else {
-            parsedData.put("status", "SUCCESS");
-        }
-    }
-
-    private void parseTransferFailed(Map<String, Object> rootMap, Map<String, Object> parsedData) {
-        // TRANSFER_FAILED parameters:
-        // - transferId: Id of the transfer passed by the merchant
-        // - referenceId: Id of the transfer generated by Cashfree Payments
-        // - reason: Reason for failure
-
-        if (rootMap.containsKey("transferId")) {
-            parsedData.put("transferId", rootMap.get("transferId").toString());
-        }
-        if (rootMap.containsKey("referenceId")) {
-            parsedData.put("referenceId", rootMap.get("referenceId").toString());
-            parsedData.put("cfTransferId", rootMap.get("referenceId").toString());
-        }
-        if (rootMap.containsKey("reason")) {
-            parsedData.put("failureReason", rootMap.get("reason").toString());
-        }
-        parsedData.put("status", "FAILED");
-        parsedData.put("statusDescription", "Transfer failed: " + rootMap.getOrDefault("reason", "Unknown reason"));
-    }
-
-    private void parseTransferReversed(Map<String, Object> rootMap, Map<String, Object> parsedData) {
-        // TRANSFER_REVERSED parameters:
-        // - transferId: Id of the transfer passed by the merchant
-        // - referenceId: Id of the transfer generated by Cashfree Payments
-        // - eventTime: Time at which the transfer was reversed
-        // - reason: Reason for reversal
-
-        if (rootMap.containsKey("transferId")) {
-            parsedData.put("transferId", rootMap.get("transferId").toString());
-        }
-        if (rootMap.containsKey("referenceId")) {
-            parsedData.put("referenceId", rootMap.get("referenceId").toString());
-            parsedData.put("cfTransferId", rootMap.get("referenceId").toString());
-        }
-        if (rootMap.containsKey("reason")) {
-            parsedData.put("failureReason", rootMap.get("reason").toString());
-        }
-        parsedData.put("status", "REVERSED");
-        parsedData.put("statusDescription", "Transfer reversed: " + rootMap.getOrDefault("reason", "Unknown reason"));
-    }
-
-    private void parseTransferAcknowledged(Map<String, Object> rootMap, Map<String, Object> parsedData) {
-        // TRANSFER_ACKNOWLEDGED parameters:
-        // - transferId: Id of the transfer passed by the merchant
-        // - referenceId: Id of the transfer generated by Cashfree Payments
-        // - acknowledged: Flag if beneficiary bank acknowledges the transfer
-
-        if (rootMap.containsKey("transferId")) {
-            parsedData.put("transferId", rootMap.get("transferId").toString());
-        }
-        if (rootMap.containsKey("referenceId")) {
-            parsedData.put("referenceId", rootMap.get("referenceId").toString());
-            parsedData.put("cfTransferId", rootMap.get("referenceId").toString());
-        }
-        if (rootMap.containsKey("acknowledged")) {
-            parsedData.put("acknowledged", rootMap.get("acknowledged"));
-        }
-        parsedData.put("status", "ACKNOWLEDGED");
-        parsedData.put("statusDescription", "Bank has acknowledged the transfer");
-    }
-
-    private void parseTransferRejected(Map<String, Object> rootMap, Map<String, Object> parsedData) {
-        // TRANSFER_REJECTED parameters:
-        // - transferId: Id of the transfer passed by the merchant
-        // - referenceId: Id of the transfer generated by Cashfree Payments
-        // - reason: Reason for rejection
-
-        if (rootMap.containsKey("transferId")) {
-            parsedData.put("transferId", rootMap.get("transferId").toString());
-        }
-        if (rootMap.containsKey("referenceId")) {
-            parsedData.put("referenceId", rootMap.get("referenceId").toString());
-            parsedData.put("cfTransferId", rootMap.get("referenceId").toString());
-        }
-        if (rootMap.containsKey("reason")) {
-            parsedData.put("failureReason", rootMap.get("reason").toString());
-        }
-        parsedData.put("status", "REJECTED");
-        parsedData.put("statusDescription", "Transfer rejected: " + rootMap.getOrDefault("reason", "Unknown reason"));
-    }
-
-    private void parseCreditConfirmation(Map<String, Object> rootMap, Map<String, Object> parsedData) {
-        // CREDIT_CONFIRMATION parameters:
-        // - ledgerBalance: The overall balance of ledger
-        // - amount: Amount deposited
-        // - utr: Unique transaction reference number
-
-        if (rootMap.containsKey("amount")) {
-            try {
-                parsedData.put("amount", new BigDecimal(rootMap.get("amount").toString()));
-            } catch (Exception e) {
-                log.warn("Could not parse amount");
-            }
-        }
-        if (rootMap.containsKey("ledgerBalance")) {
-            parsedData.put("ledgerBalance", rootMap.get("ledgerBalance").toString());
-        }
-        if (rootMap.containsKey("utr")) {
-            parsedData.put("utr", rootMap.get("utr").toString());
-        }
-        parsedData.put("status", "SUCCESS");
-    }
-
-    private void parseLowBalanceAlert(Map<String, Object> rootMap, Map<String, Object> parsedData) {
-        // LOW_BALANCE_ALERT parameters:
-        // - currentBalance: The current balance of the beneficiary account
-        // - alertTime: Alert initiation time
-
-        if (rootMap.containsKey("currentBalance")) {
-            try {
-                parsedData.put("currentBalance", new BigDecimal(rootMap.get("currentBalance").toString()));
-            } catch (Exception e) {
-                log.warn("Could not parse currentBalance");
-            }
-        }
-        if (rootMap.containsKey("alertTime")) {
-            parsedData.put("alertTime", rootMap.get("alertTime").toString());
-        }
-        parsedData.put("status", "LOW_BALANCE");
-    }
-
-    private void extractCommonFields(Map<String, Object> rootMap, Map<String, Object> parsedData) {
-        // Try to extract common fields if event type is unknown
-        if (rootMap.containsKey("transferId")) {
-            parsedData.put("transferId", rootMap.get("transferId").toString());
-        }
-        if (rootMap.containsKey("referenceId")) {
-            parsedData.put("referenceId", rootMap.get("referenceId").toString());
-            parsedData.put("cfTransferId", rootMap.get("referenceId").toString());
-        }
-        if (rootMap.containsKey("utr")) {
-            parsedData.put("utr", rootMap.get("utr").toString());
-        }
-        if (rootMap.containsKey("reason")) {
-            parsedData.put("failureReason", rootMap.get("reason").toString());
-        }
     }
 
     /**
@@ -377,6 +277,9 @@ public class PayoutWebhookService {
         String status = (String) webhookData.get("status");
         String utr = (String) webhookData.get("utr");
         String failureReason = (String) webhookData.get("failureReason");
+        BigDecimal amount = (BigDecimal) webhookData.get("amount");
+        BigDecimal fees = (BigDecimal) webhookData.get("fees");
+        BigDecimal tax = (BigDecimal) webhookData.get("tax");
 
         log.info("Event Type: {}", eventType);
         log.info("Transfer ID: {}", transferId);
@@ -384,6 +287,9 @@ public class PayoutWebhookService {
         log.info("CF Transfer ID: {}", cfTransferId);
         log.info("Status: {}", status);
         log.info("UTR: {}", utr);
+        log.info("Amount: {}", amount);
+        log.info("Fees: {}", fees);
+        log.info("Tax: {}", tax);
 
         // Find payout transaction by various identifiers
         PayoutTransaction transaction = null;
@@ -425,10 +331,21 @@ public class PayoutWebhookService {
             }
         }
 
+        // Try by UTR if other methods failed
+        if (transaction == null && utr != null && !utr.isEmpty()) {
+            log.info("Looking for transaction by UTR: {}", utr);
+            Optional<PayoutTransaction> byUtr = payoutTransactionRepository
+                    .findByReferenceId(utr); // Assuming UTR is stored in referenceId
+            if (byUtr.isPresent()) {
+                transaction = byUtr.get();
+                log.info("Found transaction by UTR");
+            }
+        }
+
         if (transaction == null) {
             log.error("Payout transaction not found for any identifier");
-            log.error("Searched by - transferId: {}, referenceId: {}, cfTransferId: {}",
-                    transferId, referenceId, cfTransferId);
+            log.error("Searched by - transferId: {}, referenceId: {}, cfTransferId: {}, utr: {}",
+                    transferId, referenceId, cfTransferId, utr);
             return;
         }
 
@@ -461,6 +378,9 @@ public class PayoutWebhookService {
         String utr = (String) webhookData.get("utr");
         String failureReason = (String) webhookData.get("failureReason");
         String statusDescription = (String) webhookData.get("statusDescription");
+        BigDecimal amount = (BigDecimal) webhookData.get("amount");
+        BigDecimal fees = (BigDecimal) webhookData.get("fees");
+        BigDecimal tax = (BigDecimal) webhookData.get("tax");
 
         log.info("Updating transaction {} with event: {}",
                 transaction.getTransferId(), eventType);
@@ -478,6 +398,20 @@ public class PayoutWebhookService {
             transaction.setReferenceId(referenceId);
         }
 
+        // Update amount if not set
+        if (amount != null && transaction.getTransferAmount() == null) {
+            transaction.setTransferAmount(amount);
+        }
+
+        // Update fees and tax
+        if (fees != null) {
+            transaction.setFees(fees);
+        }
+
+        if (tax != null) {
+            transaction.setTax(tax);
+        }
+
         // Map status
         String entityStatus = mapToEntityStatus(eventType, status);
         transaction.setStatus(entityStatus);
@@ -490,18 +424,9 @@ public class PayoutWebhookService {
         }
 
         // Set UTR if available
-        if (utr != null && !utr.isEmpty()) {
-            transaction.setReferenceId(utr); // Store UTR in referenceId
-        }
-
-        // Update fees and tax if available
-        if (webhookData.containsKey("fees") && webhookData.get("fees") != null) {
-            transaction.setFees((BigDecimal) webhookData.get("fees"));
-        }
-
-        if (webhookData.containsKey("tax") && webhookData.get("tax") != null) {
-            transaction.setTax((BigDecimal) webhookData.get("tax"));
-        }
+//        if (utr != null && !utr.isEmpty()) {
+//            transaction.se(utr);
+//        }
 
         // Build metadata
         try {
@@ -511,7 +436,21 @@ public class PayoutWebhookService {
             metadata.put("utr", utr);
             metadata.put("webhookData", webhookData);
 
-            transaction.setMetadata(objectMapper.writeValueAsString(metadata));
+            // Merge with existing metadata if any
+            if (transaction.getMetadata() != null) {
+                try {
+                    Map<String, Object> existingMetadata = objectMapper.readValue(
+                            transaction.getMetadata(),
+                            new TypeReference<Map<String, Object>>() {}
+                    );
+                    existingMetadata.putAll(metadata);
+                    transaction.setMetadata(objectMapper.writeValueAsString(existingMetadata));
+                } catch (Exception e) {
+                    transaction.setMetadata(objectMapper.writeValueAsString(metadata));
+                }
+            } else {
+                transaction.setMetadata(objectMapper.writeValueAsString(metadata));
+            }
         } catch (Exception e) {
             log.warn("Could not serialize metadata", e);
         }
@@ -541,7 +480,27 @@ public class PayoutWebhookService {
             case "LOW_BALANCE_ALERT":
                 return "low_balance";
             default:
-                return status != null ? status.toLowerCase() : "pending";
+                // If event type doesn't match, try to use the status field
+                if (status != null) {
+                    switch (status.toUpperCase()) {
+                        case "SUCCESS":
+                        case "COMPLETED":
+                            return "success";
+                        case "FAILED":
+                            return "failed";
+                        case "REVERSED":
+                            return "reversed";
+                        case "REJECTED":
+                            return "rejected";
+                        case "PENDING":
+                            return "pending";
+                        case "PROCESSING":
+                            return "processing";
+                        default:
+                            return status.toLowerCase();
+                    }
+                }
+                return "pending";
         }
     }
 
@@ -549,7 +508,12 @@ public class PayoutWebhookService {
      * Get human-readable status description
      */
     private String getStatusDescription(String eventType, String status, String failureReason) {
-        if (eventType == null) return "Unknown status";
+        if (eventType == null) {
+            if (status != null) {
+                return "Transfer " + status.toLowerCase();
+            }
+            return "Unknown status";
+        }
 
         switch (eventType) {
             case "TRANSFER_SUCCESS":
