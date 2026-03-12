@@ -1,6 +1,7 @@
 package com.example.payment_services.util;
 
 import com.example.payment_services.entity.PaymentTransaction;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
@@ -10,6 +11,7 @@ import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
 
+@Slf4j
 @Component
 public class ReslApiUtil {
 
@@ -55,7 +57,7 @@ public class ReslApiUtil {
         requestBody.put("paymentMethod", paymentMethod);
         requestBody.put("transactionType", "PAYIN");
         requestBody.put("timestamp", java.time.LocalDateTime.now().toString());
-
+        log.info("preparing payload Payin for URL: {}, requestBody: {}", url, requestBody);
         callReslApi(url, requestBody, "PAYIN", orderId);
     }
 
@@ -78,7 +80,7 @@ public class ReslApiUtil {
         requestBody.put("statusDescription", statusDescription);
         requestBody.put("transactionType", "PAYOUT");
         requestBody.put("timestamp", java.time.LocalDateTime.now().toString());
-
+        log.info("preparing payload Payout for URL: {}, requestBody: {}", url, requestBody);
         callReslApi(url, requestBody, "PAYOUT", transferId);
     }
 
@@ -97,8 +99,8 @@ public class ReslApiUtil {
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
 
             // Log request (for debugging)
-            System.out.println("Calling RESL API " + type + " - URL: " + url);
-            System.out.println("Request body: " + requestBody);
+            log.info("Calling RESL API {} - URL: {}", type, url);
+            log.info("Request body: {}", requestBody);
 
             // Make POST call
             ResponseEntity<String> response = restTemplate.exchange(
@@ -110,17 +112,16 @@ public class ReslApiUtil {
 
             // Log result
             if (response.getStatusCode().is2xxSuccessful()) {
-                System.out.println("RESL API " + type + " success for ID: " + id);
-                System.out.println("Response: " + response.getBody());
+                log.info("RESL API {} success for ID: {}", type, id);
+                log.info("Response success: {}" , response.getBody());
             } else {
-                System.err.println("RESL API " + type + " failed for ID: " + id +
-                        " - Status: " + response.getStatusCode());
-                System.err.println("Response: " + response.getBody());
+                log.info("RESL API {} failed for ID: {} - Status: {}", type, id, response.getStatusCode());
+                log.info("Response: {}" , response.getBody());
             }
 
         } catch (Exception e) {
-            System.err.println("RESL API " + type + " error for ID: " + id);
-            System.err.println("Error message: " + e.getMessage());
+            log.info("RESL API " + type + " error for ID: " + id);
+            log.info("Error message: " + e.getMessage());
             e.printStackTrace();
         }
     }
