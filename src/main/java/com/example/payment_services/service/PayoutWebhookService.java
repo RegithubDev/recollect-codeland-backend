@@ -3,6 +3,7 @@ package com.example.payment_services.service;
 import com.example.payment_services.config.CashfreeConfig;
 import com.example.payment_services.entity.PayoutTransaction;
 import com.example.payment_services.repository.PayoutTransactionRepository;
+import com.example.payment_services.util.ReslApiUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +18,8 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.*;
 
+import static com.example.payment_services.util.SecurityUtil.getCurrentUserId;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -25,6 +28,8 @@ public class PayoutWebhookService {
     private final PayoutTransactionRepository payoutTransactionRepository;
     private final ObjectMapper objectMapper;
     private final CashfreeConfig cashfreeConfig;
+    private final LedgerService ledgerService;
+    private final ReslApiUtil reslApiUtil;
 
     /**
      * Enum for payout status
@@ -361,6 +366,9 @@ public class PayoutWebhookService {
 
         // Trigger post-processing actions
         triggerPostPayoutActions(transaction, eventType);
+        //calling resl api
+        reslApiUtil.updatePayoutStatus(transaction.getTransferId(),transaction.getStatus(), transaction.getCfTransferId(),
+                transaction.getTransferAmount(), transaction.getStatusDescription());
 
         log.info("========== PAYOUT WEBHOOK PROCESSING COMPLETE ==========");
     }
@@ -542,24 +550,18 @@ public class PayoutWebhookService {
         try {
             switch (eventType) {
                 case "TRANSFER_SUCCESS":
-                case "CREDIT_CONFIRMATION":
-                    sendPayoutSuccessNotification(transaction);
-                    updateAccountingForSuccessfulPayout(transaction);
+                case "TRANSFER_ACKNOWLEDGED":
+                    ledgerService.recordWithdrawalProcessedSuccess(transaction.getCfTransferId(), transaction.getTransferId(),
+                            transaction.getCustomerId(), transaction.getReferenceId(), transaction.getTransferAmount(), getCurrentUserId());
+                    log.info("Wallet Payout Successful added to ledger: {}", eventType);
                     break;
-
                 case "TRANSFER_FAILED":
                 case "TRANSFER_REJECTED":
-                    sendPayoutFailureNotification(transaction);
-                    break;
-
                 case "TRANSFER_REVERSED":
-                    handlePayoutReversal(transaction);
+                    ledgerService.recordWithdrawalFailed(transaction.getCfTransferId(), transaction.getTransferId(),
+                            transaction.getCustomerId(), transaction.getReferenceId(), transaction.getTransferAmount(), getCurrentUserId());
+                    log.info("Wallet Payout Failed added to ledger: {}", eventType);
                     break;
-
-                case "LOW_BALANCE_ALERT":
-                    handleLowBalanceAlert(transaction);
-                    break;
-
                 default:
                     log.debug("No post-payout actions for event: {}", eventType);
             }

@@ -3,6 +3,7 @@ package com.example.payment_services.service;
 import com.example.payment_services.config.CashfreeConfig;
 import com.example.payment_services.entity.PaymentTransaction;
 import com.example.payment_services.repository.PaymentTransactionRepository;
+import com.example.payment_services.util.ReslApiUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +33,7 @@ public class PayinWebhookService {
     private final ObjectMapper objectMapper;
     private final CashfreeConfig cashfreeConfig;
     private final LedgerService ledgerService;
+    private final ReslApiUtil reslApiUtil;
 
 
     /**
@@ -176,6 +178,7 @@ public class PayinWebhookService {
         log.info("Successfully updated payment status for order: {} to {}",
                 orderId, paymentStatus);
 
+
         if (Boolean.TRUE.equals(transaction.getIsWalletTopUp())) {
             ledgerService.recordAddToWallet(
                     transaction.getCfPaymentId(),
@@ -188,6 +191,9 @@ public class PayinWebhookService {
             log.info("Post-payment actions triggered for wallet Top Up successful order: {}", orderId);
         } else {
             triggerPostPaymentActions(orderId, paymentStatus, paymentMessage, transaction);
+            //update to resl
+            reslApiUtil.updatePayinStatus(transaction.getOrderId(), transaction.getPaymentStatus(),
+                    transaction.getCfPaymentId(),transaction.getPaymentAmount(), transaction.getPaymentMethod());
         }
     }
 

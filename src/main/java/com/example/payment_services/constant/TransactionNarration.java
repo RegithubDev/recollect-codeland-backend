@@ -21,7 +21,7 @@ public final class TransactionNarration {
     public static final String WALLET_TOP_UP = "Wallet Money Added";
     // Withdrawal
     public static final String WITHDRAWAL_INITIATED = "Wallet Money Withdrew";
-    public static final String WITHDRAWAL_SUCCESS = "Wallet Amount Withdrawn Successfully ";
+    public static final String WITHDRAWAL_SUCCESS = "Wallet Amount Withdrawn Successfully";
     public static final String WITHDRAWAL_FAILED = "Wallet Amount Withdrawal Failed";
 
 }

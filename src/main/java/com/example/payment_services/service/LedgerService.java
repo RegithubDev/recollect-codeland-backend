@@ -301,8 +301,8 @@ public class LedgerService {
 
     /**
      * SCENARIO 7: Withdrawal Processed Success
-     * 1013 (Clearing) DEBIT = Clear pending
-     * 1014 (Asset) CREDIT = Bank balance decreases
+     * 4001 (Clearing) DEBIT = Clear pending
+     * 1001 (Asset) CREDIT = Bank balance decreases
      */
     @Transactional
     public void recordWithdrawalProcessedSuccess(
@@ -333,8 +333,8 @@ public class LedgerService {
 
     /**
      * SCENARIO 8: Withdrawal Failed
-     * 1015 (Clearing) DEBIT = Clear pending
-     * 1016 (Liability) CREDIT = Return to wallet liability
+     * 4001 (Clearing) DEBIT = Clear pending
+     * 3001 (Liability) CREDIT = Return to wallet liability
      */
     @Transactional
     public void recordWithdrawalFailed(
